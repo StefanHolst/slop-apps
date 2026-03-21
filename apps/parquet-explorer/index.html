@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#34d399">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <link rel="icon" type="image/svg+xml" href="../icons/slopos.svg">
+  <link rel="apple-touch-icon" href="../icons/slopos.png">
+  <title>Parquet Explorer</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --surface2: #1a2236;
+      --border: rgba(255,255,255,0.06);
+      --text: #e0e8f0;
+      --text-dim: #6b7a94;
+      --accent: #34d399;
+      --accent-dim: rgba(52, 211, 153, 0.1);
+      --radius: 8px;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .container { max-width: 1200px; width: 100%; }
+
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 24px; }
+
+    .btn {
+      background: var(--accent-dim);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius);
+      color: var(--accent);
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 8px 16px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn:hover { background: rgba(52, 211, 153, 0.2); }
+
+    .drop-zone {
+      border: 2px dashed rgba(52, 211, 153, 0.3);
+      border-radius: var(--radius);
+      padding: 48px;
+      text-align: center;
+      color: var(--text-dim);
+      font-size: 0.9rem;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 24px;
+    }
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .drop-zone p { margin-bottom: 12px; }
+
+    .file-info {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .file-info.visible { display: flex; gap: 24px; flex-wrap: wrap; align-items: center; }
+    .file-info .stat { display: flex; flex-direction: column; gap: 2px; }
+    .file-info .stat-label { font-size: 0.7rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.05em; }
+    .file-info .stat-value { font-size: 0.9rem; color: var(--accent); }
+
+    .tabs {
+      display: flex;
+      gap: 4px;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .tabs.visible { display: flex; }
+    .tab {
+      background: transparent;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-dim);
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 6px 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .tab:hover { color: var(--text); border-color: rgba(255,255,255,0.12); }
+    .tab.active { color: var(--accent); border-color: var(--accent); background: var(--accent-dim); }
+
+    .panel { display: none; }
+    .panel.visible { display: block; }
+
+    .table-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: auto;
+      max-height: 70vh;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.8rem;
+    }
+    th, td {
+      padding: 8px 12px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+      max-width: 300px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    th {
+      background: var(--surface2);
+      color: var(--accent);
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      cursor: pointer;
+      user-select: none;
+    }
+    th:hover { background: rgba(52, 211, 153, 0.08); }
+    th .sort-arrow { opacity: 0.4; margin-left: 4px; }
+    th.sorted .sort-arrow { opacity: 1; }
+    tr:hover td { background: rgba(52, 211, 153, 0.03); }
+
+    .schema-table th { cursor: default; }
+    .schema-table th:hover { background: var(--surface2); }
+
+    .pagination {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 0;
+      font-size: 0.8rem;
+      color: var(--text-dim);
+    }
+    .pagination .page-btns { display: flex; gap: 4px; }
+
+    .search-bar {
+      display: none;
+      margin-bottom: 12px;
+    }
+    .search-bar.visible { display: flex; gap: 8px; }
+    .search-bar input {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.85rem;
+      padding: 8px 12px;
+      outline: none;
+    }
+    .search-bar input:focus { border-color: var(--accent); }
+    .search-bar select {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 8px 12px;
+      outline: none;
+    }
+
+    .loading {
+      text-align: center;
+      padding: 40px;
+      color: var(--text-dim);
+      display: none;
+    }
+    .loading.visible { display: block; }
+
+    .error {
+      background: rgba(248, 113, 113, 0.1);
+      border: 1px solid rgba(248, 113, 113, 0.3);
+      border-radius: var(--radius);
+      padding: 12px 16px;
+      color: #f87171;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+      display: none;
+    }
+    .error.visible { display: block; }
+
+    input[type="file"] { display: none; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Parquet Explorer</h1>
+    <p class="subtitle">inspect parquet files in the browser</p>
+
+    <div class="error" id="error"></div>
+
+    <div class="drop-zone" id="dropZone">
+      <p>drop a .parquet file here</p>
+      <button class="btn" id="browseBtn">browse files</button>
+      <input type="file" id="fileInput" accept=".parquet,.parq">
+    </div>
+
+    <div class="loading" id="loading">parsing parquet file...</div>
+
+    <div class="file-info" id="fileInfo">
+      <div class="stat"><span class="stat-label">file</span><span class="stat-value" id="fileName">-</span></div>
+      <div class="stat"><span class="stat-label">size</span><span class="stat-value" id="fileSize">-</span></div>
+      <div class="stat"><span class="stat-label">rows</span><span class="stat-value" id="rowCount">-</span></div>
+      <div class="stat"><span class="stat-label">columns</span><span class="stat-value" id="colCount">-</span></div>
+      <div class="stat"><span class="stat-label">row groups</span><span class="stat-value" id="rowGroups">-</span></div>
+      <div class="stat" style="margin-left:auto"><button class="btn" id="newFileBtn">open another</button></div>
+    </div>
+
+    <div class="tabs" id="tabs">
+      <button class="tab active" data-tab="data">Data</button>
+      <button class="tab" data-tab="schema">Schema</button>
+    </div>
+
+    <div class="panel visible" id="dataPanel">
+      <div class="search-bar" id="searchBar">
+        <select id="searchCol"><option value="__all__">all columns</option></select>
+        <input type="text" id="searchInput" placeholder="filter rows...">
+      </div>
+      <div class="table-wrap" id="dataTableWrap">
+        <table id="dataTable"><thead></thead><tbody></tbody></table>
+      </div>
+      <div class="pagination" id="pagination">
+        <span id="pageInfo"></span>
+        <div class="page-btns">
+          <button class="btn" id="prevBtn" disabled>&lt; prev</button>
+          <button class="btn" id="nextBtn">next &gt;</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" id="schemaPanel">
+      <div class="table-wrap">
+        <table class="schema-table" id="schemaTable"><thead></thead><tbody></tbody></table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    import { parquetMetadataAsync, parquetRead } from 'https://esm.sh/hyparquet@1.7.1';
+
+    const $ = s => document.querySelector(s);
+    const PAGE_SIZE = 100;
+
+    let allRows = [];
+    let filteredRows = [];
+    let columns = [];
+    let sortCol = -1;
+    let sortAsc = true;
+    let page = 0;
+
+    // File input
+    const dropZone = $('#dropZone');
+    const fileInput = $('#fileInput');
+
+    $('#browseBtn').addEventListener('click', e => { e.stopPropagation(); fileInput.click(); });
+    dropZone.addEventListener('click', () => fileInput.click());
+    fileInput.addEventListener('change', e => { if (e.target.files[0]) loadFile(e.target.files[0]); });
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file) loadFile(file);
+    });
+
+    $('#newFileBtn').addEventListener('click', () => {
+      fileInput.value = '';
+      fileInput.click();
+    });
+
+    // Tabs
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('visible'));
+        $(`#${tab.dataset.tab}Panel`).classList.add('visible');
+      });
+    });
+
+    // Search
+    let searchTimeout;
+    $('#searchInput').addEventListener('input', () => {
+      clearTimeout(searchTimeout);
+      searchTimeout = setTimeout(applyFilter, 200);
+    });
+    $('#searchCol').addEventListener('change', applyFilter);
+
+    // Pagination
+    $('#prevBtn').addEventListener('click', () => { page--; renderPage(); });
+    $('#nextBtn').addEventListener('click', () => { page++; renderPage(); });
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+    }
+
+    function showError(msg) {
+      const el = $('#error');
+      el.textContent = msg;
+      el.classList.add('visible');
+    }
+
+    function clearError() {
+      $('#error').classList.remove('visible');
+    }
+
+    function parquetTypeToString(schema) {
+      if (schema.logical_type) {
+        const lt = schema.logical_type;
+        if (lt.type === 'STRING' || lt.type === 'UTF8') return 'string';
+        if (lt.type === 'INT' || lt.type === 'INTEGER') return `int${lt.bit_width || ''}${lt.is_signed === false ? ' unsigned' : ''}`;
+        if (lt.type === 'DECIMAL') return `decimal(${lt.precision},${lt.scale})`;
+        if (lt.type === 'DATE') return 'date';
+        if (lt.type === 'TIME') return 'time';
+        if (lt.type === 'TIMESTAMP') return 'timestamp';
+        if (lt.type === 'JSON') return 'json';
+        if (lt.type === 'BSON') return 'bson';
+        if (lt.type === 'UUID') return 'uuid';
+        if (lt.type === 'ENUM') return 'enum';
+        if (lt.type === 'LIST') return 'list';
+        if (lt.type === 'MAP') return 'map';
+        return lt.type?.toLowerCase() || 'unknown';
+      }
+      const t = schema.type;
+      if (t === 'BYTE_ARRAY' || t === 'FIXED_LEN_BYTE_ARRAY') {
+        if (schema.converted_type === 'UTF8') return 'string';
+        return t.toLowerCase();
+      }
+      if (t) return t.toLowerCase();
+      return 'group';
+    }
+
+    async function loadFile(file) {
+      clearError();
+      dropZone.style.display = 'none';
+      $('#loading').classList.add('visible');
+      $('#fileInfo').classList.remove('visible');
+      $('#tabs').classList.remove('visible');
+      $('#searchBar').classList.remove('visible');
+      $('#dataPanel').classList.remove('visible');
+      $('#schemaPanel').classList.remove('visible');
+
+      try {
+        const arrayBuffer = await file.arrayBuffer();
+
+        const metadata = await parquetMetadataAsync(arrayBuffer);
+
+        const numRows = Number(metadata.num_rows);
+        const schemaElements = metadata.schema.slice(1); // first element is root
+        columns = schemaElements.map(s => s.name);
+
+        // Read data
+        const data = [];
+        await parquetRead({
+          file: arrayBuffer,
+          rowEnd: Math.min(numRows, 50000), // cap at 50k rows for browser performance
+          onComplete: rows => data.push(...rows),
+        });
+
+        allRows = data;
+        filteredRows = allRows;
+        sortCol = -1;
+        page = 0;
+
+        // File info
+        $('#fileName').textContent = file.name;
+        $('#fileSize').textContent = formatSize(file.size);
+        $('#rowCount').textContent = numRows.toLocaleString() + (numRows > 50000 ? ' (showing 50k)' : '');
+        $('#colCount').textContent = columns.length;
+        $('#rowGroups').textContent = metadata.row_groups.length;
+
+        // Schema table
+        const schemaHead = $('#schemaTable thead');
+        const schemaBody = $('#schemaTable tbody');
+        schemaHead.innerHTML = '<tr><th>#</th><th>Name</th><th>Type</th><th>Repetition</th></tr>';
+        schemaBody.innerHTML = schemaElements.map((s, i) => `
+          <tr>
+            <td style="color:var(--text-dim)">${i}</td>
+            <td>${s.name}</td>
+            <td style="color:var(--accent)">${parquetTypeToString(s)}</td>
+            <td style="color:var(--text-dim)">${(s.repetition_type || '').toLowerCase()}</td>
+          </tr>
+        `).join('');
+
+        // Search column dropdown
+        const searchCol = $('#searchCol');
+        searchCol.innerHTML = '<option value="__all__">all columns</option>' +
+          columns.map((c, i) => `<option value="${i}">${c}</option>`).join('');
+
+        // Show UI
+        $('#loading').classList.remove('visible');
+        $('#fileInfo').classList.add('visible');
+        $('#tabs').classList.add('visible');
+        $('#searchBar').classList.add('visible');
+        document.querySelector('.tab.active').click();
+
+        renderDataHeader();
+        renderPage();
+
+      } catch (err) {
+        console.error(err);
+        $('#loading').classList.remove('visible');
+        dropZone.style.display = '';
+        showError('Failed to parse parquet file: ' + err.message);
+      }
+    }
+
+    function renderDataHeader() {
+      const thead = $('#dataTable thead');
+      thead.innerHTML = '<tr>' + columns.map((c, i) =>
+        `<th data-col="${i}">${c}<span class="sort-arrow">\u25B2</span></th>`
+      ).join('') + '</tr>';
+
+      thead.querySelectorAll('th').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = parseInt(th.dataset.col);
+          if (sortCol === col) { sortAsc = !sortAsc; }
+          else { sortCol = col; sortAsc = true; }
+          sortRows();
+          page = 0;
+          renderDataHeader();
+          renderPage();
+          // Mark sorted column
+          const sorted = thead.querySelector(`th[data-col="${col}"]`);
+          if (sorted) {
+            sorted.classList.add('sorted');
+            sorted.querySelector('.sort-arrow').textContent = sortAsc ? '\u25B2' : '\u25BC';
+          }
+        });
+      });
+
+      if (sortCol >= 0) {
+        const sorted = thead.querySelector(`th[data-col="${sortCol}"]`);
+        if (sorted) {
+          sorted.classList.add('sorted');
+          sorted.querySelector('.sort-arrow').textContent = sortAsc ? '\u25B2' : '\u25BC';
+        }
+      }
+    }
+
+    function sortRows() {
+      filteredRows.sort((a, b) => {
+        let va = a[sortCol], vb = b[sortCol];
+        if (va == null && vb == null) return 0;
+        if (va == null) return 1;
+        if (vb == null) return -1;
+        if (typeof va === 'bigint' || typeof vb === 'bigint') {
+          va = typeof va === 'bigint' ? va : BigInt(va || 0);
+          vb = typeof vb === 'bigint' ? vb : BigInt(vb || 0);
+          return sortAsc ? (va < vb ? -1 : va > vb ? 1 : 0) : (vb < va ? -1 : vb > va ? 1 : 0);
+        }
+        if (typeof va === 'number' && typeof vb === 'number') {
+          return sortAsc ? va - vb : vb - va;
+        }
+        va = String(va); vb = String(vb);
+        return sortAsc ? va.localeCompare(vb) : vb.localeCompare(va);
+      });
+    }
+
+    function applyFilter() {
+      const query = $('#searchInput').value.toLowerCase().trim();
+      const colVal = $('#searchCol').value;
+
+      if (!query) {
+        filteredRows = [...allRows];
+      } else if (colVal === '__all__') {
+        filteredRows = allRows.filter(row =>
+          row.some(cell => cell != null && String(cell).toLowerCase().includes(query))
+        );
+      } else {
+        const ci = parseInt(colVal);
+        filteredRows = allRows.filter(row =>
+          row[ci] != null && String(row[ci]).toLowerCase().includes(query)
+        );
+      }
+
+      if (sortCol >= 0) sortRows();
+      page = 0;
+      renderPage();
+    }
+
+    function formatCell(value) {
+      if (value == null) return '<span style="color:var(--text-dim);font-style:italic">null</span>';
+      if (value instanceof Date) return value.toISOString();
+      if (typeof value === 'bigint') return value.toString();
+      if (typeof value === 'object') {
+        try { return JSON.stringify(value); }
+        catch { return String(value); }
+      }
+      return String(value);
+    }
+
+    function renderPage() {
+      const tbody = $('#dataTable tbody');
+      const start = page * PAGE_SIZE;
+      const end = Math.min(start + PAGE_SIZE, filteredRows.length);
+      const slice = filteredRows.slice(start, end);
+
+      tbody.innerHTML = slice.map(row =>
+        '<tr>' + row.map(cell => `<td>${formatCell(cell)}</td>`).join('') + '</tr>'
+      ).join('');
+
+      const totalPages = Math.ceil(filteredRows.length / PAGE_SIZE);
+      $('#pageInfo').textContent = filteredRows.length === 0
+        ? 'no results'
+        : `${start + 1}\u2013${end} of ${filteredRows.length.toLocaleString()}`;
+      $('#prevBtn').disabled = page === 0;
+      $('#nextBtn').disabled = page >= totalPages - 1;
+    }
+  </script>
+</body>
+</html>
