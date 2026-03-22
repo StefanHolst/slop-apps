@@ -1,0 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Agent Term</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.css">
+  <style>
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --surface2: #1a2236;
+      --border: #1e2940;
+      --text: #d0d8e8;
+      --text-dim: #6b7a94;
+      --accent: #34d399;
+      --accent-dim: rgba(52, 211, 153, 0.1);
+      --accent2: #60a5fa;
+      --accent2-dim: rgba(96, 165, 250, 0.15);
+      --danger: #f87171;
+      --warn: #fbbf24;
+      --radius: 8px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      height: 100vh;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+    }
+
+    button, input, textarea { font: inherit; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+
+    .toolbar-note {
+      font-size: 11px;
+      color: var(--text-dim);
+    }
+
+    .spacer { margin-left: auto; }
+
+    /* ── Main layout ── */
+    .main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      min-height: 0;
+      overflow: hidden;
+    }
+
+    /* ── Terminal side ── */
+    .term-side {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      border-right: 1px solid var(--border);
+    }
+
+    .session-tabs {
+      display: flex;
+      align-items: center;
+      gap: 0;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      overflow-x: auto;
+      flex-shrink: 0;
+    }
+
+    .session-tab {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      font-size: 12px;
+      color: var(--text-dim);
+      cursor: pointer;
+      border-right: 1px solid var(--border);
+      white-space: nowrap;
+      transition: background 0.12s;
+    }
+
+    .session-tab:hover { background: var(--surface2); }
+    .session-tab.active { background: var(--surface2); color: var(--accent); }
+
+    .session-tab .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .session-tab .dot.connected { background: var(--accent); }
+    .session-tab .dot.connecting { background: var(--warn); }
+    .session-tab .dot.closed { background: var(--danger); }
+
+    .session-tab .close-tab {
+      margin-left: 4px;
+      font-size: 13px;
+      color: var(--text-dim);
+      cursor: pointer;
+      line-height: 1;
+    }
+
+    .session-tab .close-tab:hover { color: var(--danger); }
+
+    .add-tab {
+      padding: 8px 12px;
+      font-size: 14px;
+      color: var(--text-dim);
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+
+    .add-tab:hover { color: var(--accent); }
+
+    .session-connect {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 10px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .session-connect input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 7px 10px;
+      font-size: 12px;
+    }
+
+    .session-connect input:focus { outline: none; border-color: var(--accent); }
+
+    .session-connect .label-input {
+      width: 120px;
+      flex: none;
+    }
+
+    .btn {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--accent);
+      padding: 7px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: background 0.12s, border-color 0.12s;
+    }
+
+    .btn:hover { background: var(--accent-dim); border-color: var(--accent); }
+    .btn.danger { color: var(--danger); }
+    .btn.danger:hover { border-color: var(--danger); background: rgba(248,113,113,0.1); }
+
+    .terminal-area {
+      flex: 1;
+      min-height: 0;
+      padding: 6px;
+      background: linear-gradient(180deg, #0d1526 0%, #0a0e1a 100%);
+    }
+
+    .terminal-area .xterm { height: 100%; }
+
+    /* ── Agent side ── */
+    .agent-side {
+      display: flex;
+      flex-direction: column;
+      min-height: 0;
+      background: var(--surface);
+    }
+
+    .agent-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .agent-header .panel-title {
+      font-size: 12px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--accent2);
+    }
+
+    .agent-header .badge {
+      font-size: 10px;
+      color: var(--text-dim);
+      border: 1px solid var(--border);
+      background: rgba(8,14,22,0.4);
+      border-radius: 999px;
+      padding: 3px 8px;
+      margin-left: auto;
+    }
+
+    .agent-settings {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .agent-settings .row {
+      display: flex;
+      gap: 6px;
+    }
+
+    .agent-settings input {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 6px 8px;
+      font-size: 11px;
+    }
+
+    .agent-settings input:focus { outline: none; border-color: var(--accent2); }
+
+    .agent-settings .label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-dim);
+    }
+
+    .messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-height: 0;
+    }
+
+    .message {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      background: rgba(8,14,22,0.42);
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .message.user { border-color: rgba(96,165,250,0.45); }
+    .message.assistant { border-color: rgba(52,211,153,0.35); }
+    .message.tool { border-color: rgba(251,191,36,0.35); }
+    .message.system { border-color: rgba(141,162,184,0.35); }
+    .message.error { border-color: rgba(255,107,107,0.45); }
+
+    .message-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 10px;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+    }
+
+    .message-body {
+      font-size: 12px;
+      line-height: 1.5;
+      color: var(--text);
+      white-space: pre-wrap;
+      word-break: break-word;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+
+    .composer {
+      padding: 10px 12px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      flex-shrink: 0;
+    }
+
+    .composer textarea {
+      width: 100%;
+      min-height: 60px;
+      max-height: 140px;
+      resize: vertical;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 8px 10px;
+      font-size: 12px;
+    }
+
+    .composer textarea:focus { outline: none; border-color: var(--accent2); }
+
+    .composer-actions {
+      display: flex;
+      gap: 6px;
+    }
+
+    .composer-actions .btn { flex: 1; }
+    .btn.primary { color: var(--accent2); }
+    .btn.primary:hover { border-color: var(--accent2); background: var(--accent2-dim); }
+
+    /* ── Status bar ── */
+    .statusbar {
+      padding: 6px 12px;
+      border-top: 1px solid var(--border);
+      background: var(--surface);
+      font-size: 11px;
+      color: var(--text-dim);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .statusbar .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .dot.ok { background: var(--accent); }
+    .dot.warn { background: var(--warn); }
+    .dot.err { background: var(--danger); }
+
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(8,14,22,0.4); }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(96,165,250,0.25);
+      border-radius: 999px;
+    }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(96,165,250,0.4); }
+
+    @media (max-width: 900px) {
+      .main { grid-template-columns: 1fr; }
+      .agent-side { max-height: 40vh; }
+    }
+  </style>
+</head>
+<body>
+  <header class="toolbar">
+    <div class="title">&gt;_ agent term</div>
+    <div class="toolbar-note">multi-session terminal with AI agent oversight</div>
+    <div class="spacer"></div>
+    <button class="btn danger" id="clearChatBtn">Clear Chat</button>
+  </header>
+
+  <div class="main">
+    <!-- Terminal side -->
+    <div class="term-side">
+      <div class="session-tabs" id="sessionTabs">
+        <div class="add-tab" id="addTabBtn" title="New session">+</div>
+      </div>
+
+      <div class="session-connect" id="sessionConnect">
+        <input class="label-input" id="sessionLabel" placeholder="Label" spellcheck="false" />
+        <input id="wsUrlInput" placeholder="ws://localhost:8080" spellcheck="false" autocomplete="off" />
+        <button class="btn" id="connectBtn">Connect</button>
+        <button class="btn danger" id="disconnectBtn">Disconnect</button>
+      </div>
+
+      <div class="terminal-area" id="terminalArea"></div>
+    </div>
+
+    <!-- Agent side -->
+    <div class="agent-side">
+      <div class="agent-header">
+        <div class="panel-title">Agent</div>
+        <div class="badge" id="agentModelBadge">gpt-5.4</div>
+      </div>
+
+      <div class="agent-settings" id="agentSettings">
+        <div class="label">OpenAI API token</div>
+        <div class="row">
+          <input id="apiKeyInput" type="password" placeholder="Paste OpenAI API token" />
+          <button class="btn" id="saveKeyBtn">Save</button>
+        </div>
+        <div class="label">Model</div>
+        <input id="modelInput" type="text" value="gpt-5.4" />
+        <button class="btn" id="toggleSettingsBtn" style="font-size:11px; color: var(--text-dim)">Hide settings</button>
+      </div>
+
+      <div class="messages" id="messages"></div>
+
+      <div class="composer">
+        <textarea id="userInput" placeholder="Ask the agent about your terminal sessions..."></textarea>
+        <div class="composer-actions">
+          <button class="btn primary" id="sendBtn">Send</button>
+          <button class="btn danger" id="stopBtn">Stop</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer class="statusbar">
+    <span class="dot" id="statusDot"></span>
+    <span id="statusText">Ready</span>
+    <span class="spacer"></span>
+    <span id="sessionCount">0 sessions</span>
+  </footer>
+
+  <script type="module">
+    import { Terminal } from 'https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm';
+
+    // ═══════════════════════════════════════════
+    // Terminal session management
+    // ═══════════════════════════════════════════
+
+    const TERM_THEME = {
+      background: '#0a0e1a',
+      foreground: '#d0d8e8',
+      cursor: '#34d399',
+      black: '#0a0e1a', red: '#f87171', green: '#34d399', yellow: '#fbbf24',
+      blue: '#60a5fa', magenta: '#c084fc', cyan: '#22d3ee', white: '#d0d8e8',
+      brightBlack: '#6b7a94', brightRed: '#fca5a5', brightGreen: '#86efac',
+      brightYellow: '#fde68a', brightBlue: '#93c5fd', brightMagenta: '#d8b4fe',
+      brightCyan: '#67e8f9', brightWhite: '#f8fafc'
+    };
+
+    const decoder = new TextDecoder();
+    let sessions = [];
+    let activeSessionId = null;
+    let sessionCounter = 0;
+
+    function createSession(label) {
+      const id = ++sessionCounter;
+      const terminal = new Terminal({
+        cursorBlink: true,
+        fontFamily: "'JetBrains Mono', 'SF Mono', 'Fira Code', 'Consolas', monospace",
+        fontSize: 13,
+        theme: TERM_THEME,
+        scrollback: 5000
+      });
+
+      const session = {
+        id,
+        label: label || `Session ${id}`,
+        terminal,
+        socket: null,
+        wsUrl: '',
+        status: 'closed', // closed | connecting | connected
+        buffer: [] // store last N lines for agent access
+      };
+
+      // Capture output for agent reading
+      terminal.onData((data) => {
+        if (session.socket && session.socket.readyState === WebSocket.OPEN) {
+          session.socket.send(data);
+        }
+      });
+
+      // Track output in buffer
+      terminal.onLineFeed(() => {
+        const buf = terminal.buffer.active;
+        if (buf.cursorY > 0) {
+          const line = buf.getLine(buf.cursorY - 1);
+          if (line) session.buffer.push(line.translateToString(true));
+          if (session.buffer.length > 500) session.buffer.shift();
+        }
+      });
+
+      sessions.push(session);
+      renderTabs();
+      switchToSession(id);
+      return session;
+    }
+
+    function removeSession(id) {
+      const idx = sessions.findIndex(s => s.id === id);
+      if (idx === -1) return;
+      const session = sessions[idx];
+      if (session.socket) session.socket.close();
+      session.terminal.dispose();
+      sessions.splice(idx, 1);
+
+      if (activeSessionId === id) {
+        if (sessions.length) {
+          switchToSession(sessions[Math.max(0, idx - 1)].id);
+        } else {
+          activeSessionId = null;
+          terminalArea.innerHTML = '';
+        }
+      }
+      renderTabs();
+    }
+
+    function getSession(id) {
+      return sessions.find(s => s.id === id);
+    }
+
+    function switchToSession(id) {
+      const session = getSession(id);
+      if (!session) return;
+
+      activeSessionId = id;
+      terminalArea.innerHTML = '';
+      session.terminal.open(terminalArea);
+
+      wsUrlInput.value = session.wsUrl;
+      sessionLabel.value = session.label;
+      renderTabs();
+
+      setTimeout(() => session.terminal.focus(), 0);
+    }
+
+    function connectSession(session, url) {
+      if (session.socket) {
+        session.socket.close();
+        session.socket = null;
+      }
+
+      session.wsUrl = url;
+      session.status = 'connecting';
+      renderTabs();
+      session.terminal.writeln(`\r\n[connecting] ${url}`);
+
+      let ws;
+      try {
+        ws = new WebSocket(url);
+        ws.binaryType = 'arraybuffer';
+      } catch (err) {
+        session.status = 'closed';
+        session.terminal.writeln(`\r\n[error] ${err.message}`);
+        renderTabs();
+        return;
+      }
+
+      session.socket = ws;
+
+      ws.addEventListener('open', () => {
+        if (session.socket !== ws) return;
+        session.status = 'connected';
+        session.terminal.writeln('\r\n[connected]');
+        session.terminal.focus();
+        renderTabs();
+      });
+
+      ws.addEventListener('message', async (event) => {
+        if (session.socket !== ws) return;
+        const text = await decodeData(event.data);
+        session.terminal.write(text);
+      });
+
+      ws.addEventListener('close', () => {
+        if (session.socket === ws) session.socket = null;
+        session.status = 'closed';
+        session.terminal.writeln('\r\n[closed]');
+        renderTabs();
+      });
+
+      ws.addEventListener('error', () => {
+        session.terminal.writeln('\r\n[error] websocket error');
+      });
+    }
+
+    function disconnectSession(session) {
+      if (session.socket) {
+        const current = session.socket;
+        session.socket = null;
+        current.close();
+      }
+      session.status = 'closed';
+      session.terminal.writeln('\r\n[disconnected]');
+      renderTabs();
+    }
+
+    async function decodeData(data) {
+      if (typeof data === 'string') return data;
+      if (data instanceof ArrayBuffer) return decoder.decode(new Uint8Array(data));
+      if (data instanceof Blob) return decoder.decode(new Uint8Array(await data.arrayBuffer()));
+      if (ArrayBuffer.isView(data)) return decoder.decode(new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+      return String(data);
+    }
+
+    function getTerminalContent(session, lineCount = 100) {
+      const buf = session.terminal.buffer.active;
+      const lines = [];
+      const start = Math.max(0, buf.length - lineCount);
+      for (let i = start; i < buf.length; i++) {
+        const line = buf.getLine(i);
+        if (line) lines.push(line.translateToString(true));
+      }
+      return lines.join('\n');
+    }
+
+    // ═══════════════════════════════════════════
+    // Tab rendering
+    // ═══════════════════════════════════════════
+
+    const sessionTabs = document.getElementById('sessionTabs');
+    const addTabBtn = document.getElementById('addTabBtn');
+    const terminalArea = document.getElementById('terminalArea');
+    const wsUrlInput = document.getElementById('wsUrlInput');
+    const sessionLabel = document.getElementById('sessionLabel');
+    const connectBtn = document.getElementById('connectBtn');
+    const disconnectBtn = document.getElementById('disconnectBtn');
+    const sessionCountEl = document.getElementById('sessionCount');
+
+    function renderTabs() {
+      // Remove existing tabs (not the add button)
+      sessionTabs.querySelectorAll('.session-tab').forEach(el => el.remove());
+
+      sessions.forEach(s => {
+        const tab = document.createElement('div');
+        tab.className = `session-tab${s.id === activeSessionId ? ' active' : ''}`;
+        tab.innerHTML = `<span class="dot ${s.status}"></span><span>${escapeHtml(s.label)}</span><span class="close-tab">&times;</span>`;
+
+        tab.addEventListener('click', (e) => {
+          if (e.target.classList.contains('close-tab')) {
+            removeSession(s.id);
+          } else {
+            switchToSession(s.id);
+          }
+        });
+
+        sessionTabs.insertBefore(tab, addTabBtn);
+      });
+
+      const connected = sessions.filter(s => s.status === 'connected').length;
+      sessionCountEl.textContent = `${sessions.length} session${sessions.length !== 1 ? 's' : ''} · ${connected} connected`;
+    }
+
+    addTabBtn.addEventListener('click', () => createSession());
+
+    connectBtn.addEventListener('click', () => {
+      const session = getSession(activeSessionId);
+      if (!session) return;
+      const url = wsUrlInput.value.trim();
+      if (!url) { session.terminal.writeln('\r\n[error] URL required'); return; }
+      session.label = sessionLabel.value.trim() || session.label;
+      connectSession(session, url);
+    });
+
+    disconnectBtn.addEventListener('click', () => {
+      const session = getSession(activeSessionId);
+      if (session) disconnectSession(session);
+    });
+
+    wsUrlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') connectBtn.click();
+    });
+
+    // ═══════════════════════════════════════════
+    // Agent chat
+    // ═══════════════════════════════════════════
+
+    const STORAGE_KEYS = {
+      apiKey: 'agent-term-api-key',
+      model: 'agent-term-model',
+      chatMessages: 'agent-term-messages',
+      chatStats: 'agent-term-stats'
+    };
+
+    const apiKeyInput = document.getElementById('apiKeyInput');
+    const modelInput = document.getElementById('modelInput');
+    const saveKeyBtn = document.getElementById('saveKeyBtn');
+    const toggleSettingsBtn = document.getElementById('toggleSettingsBtn');
+    const agentSettings = document.getElementById('agentSettings');
+    const agentModelBadge = document.getElementById('agentModelBadge');
+    const messagesEl = document.getElementById('messages');
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const clearChatBtn = document.getElementById('clearChatBtn');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+
+    let chatState = {
+      messages: [],
+      running: false,
+      abortController: null,
+      toolCalls: 0
+    };
+
+    function escapeHtml(t) {
+      return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    }
+
+    function setAgentStatus(text, tone = '') {
+      statusText.textContent = text;
+      statusDot.className = `dot ${tone}`.trim();
+    }
+
+    function formatTime(ts) {
+      return new Date(ts).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function renderMessages() {
+      messagesEl.innerHTML = '';
+      chatState.messages.forEach(msg => {
+        const div = document.createElement('div');
+        div.className = `message ${msg.kind || msg.role || 'system'}`;
+        div.innerHTML = `
+          <div class="message-head">
+            <span>${escapeHtml(msg.label || msg.role)}</span>
+            <span>${escapeHtml(formatTime(msg.ts || Date.now()))}</span>
+          </div>
+          <div class="message-body">${escapeHtml(msg.text || '')}</div>
+        `;
+        messagesEl.appendChild(div);
+      });
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+    }
+
+    function addMessage(role, text, kind = role, label = role) {
+      chatState.messages.push({ role, text, kind, label, ts: Date.now() });
+      renderMessages();
+      saveChatState();
+    }
+
+    async function saveChatState() {
+      try {
+        localStorage.setItem(STORAGE_KEYS.chatMessages, JSON.stringify(chatState.messages));
+        localStorage.setItem(STORAGE_KEYS.chatStats, JSON.stringify({ toolCalls: chatState.toolCalls }));
+      } catch {}
+    }
+
+    async function loadChatState() {
+      try {
+        apiKeyInput.value = localStorage.getItem(STORAGE_KEYS.apiKey) || '';
+        modelInput.value = localStorage.getItem(STORAGE_KEYS.model) || 'gpt-5.4';
+        agentModelBadge.textContent = modelInput.value;
+
+        const raw = localStorage.getItem(STORAGE_KEYS.chatMessages);
+        if (raw) chatState.messages = JSON.parse(raw) || [];
+        const stats = localStorage.getItem(STORAGE_KEYS.chatStats);
+        if (stats) chatState.toolCalls = JSON.parse(stats)?.toolCalls || 0;
+      } catch {}
+
+      if (!chatState.messages.length) {
+        chatState.messages.push({
+          role: 'system', kind: 'system', label: 'system',
+          text: 'Agent Term ready. Configure your API key, connect terminal sessions, then ask the agent to analyze them.',
+          ts: Date.now()
+        });
+      }
+
+      renderMessages();
+    }
+
+    saveKeyBtn.addEventListener('click', () => {
+      localStorage.setItem(STORAGE_KEYS.apiKey, apiKeyInput.value.trim());
+      localStorage.setItem(STORAGE_KEYS.model, modelInput.value.trim() || 'gpt-5.4');
+      agentModelBadge.textContent = modelInput.value.trim() || 'gpt-5.4';
+      setAgentStatus('Saved', 'ok');
+    });
+
+    let settingsVisible = true;
+    toggleSettingsBtn.addEventListener('click', () => {
+      settingsVisible = !settingsVisible;
+      agentSettings.querySelectorAll(':scope > :not(button)').forEach(el => {
+        el.style.display = settingsVisible ? '' : 'none';
+      });
+      toggleSettingsBtn.textContent = settingsVisible ? 'Hide settings' : 'Show settings';
+    });
+
+    clearChatBtn.addEventListener('click', () => {
+      chatState.messages = [{
+        role: 'system', kind: 'system', label: 'system',
+        text: 'Chat cleared.', ts: Date.now()
+      }];
+      chatState.toolCalls = 0;
+      renderMessages();
+      saveChatState();
+      setAgentStatus('Ready');
+    });
+
+    // ═══════════════════════════════════════════
+    // Agent tools
+    // ═══════════════════════════════════════════
+
+    const TOOLS = [
+      {
+        type: 'function',
+        name: 'read_terminal',
+        description: 'Read the recent output from a terminal session. Returns the last N lines of terminal content.',
+        parameters: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'number',
+              description: 'The session ID number. Use list_sessions first to see available sessions.'
+            },
+            line_count: {
+              type: 'number',
+              description: 'Number of recent lines to read (default 80, max 500)'
+            }
+          },
+          required: ['session_id'],
+          additionalProperties: false
+        }
+      },
+      {
+        type: 'function',
+        name: 'send_command',
+        description: 'Send a command or text to a terminal session. The text is typed into the terminal as if the user typed it. Include \\n to press Enter.',
+        parameters: {
+          type: 'object',
+          properties: {
+            session_id: {
+              type: 'number',
+              description: 'The session ID to send to.'
+            },
+            text: {
+              type: 'string',
+              description: 'The text/command to send. Include \\n at the end to press Enter.'
+            }
+          },
+          required: ['session_id', 'text'],
+          additionalProperties: false
+        }
+      },
+      {
+        type: 'function',
+        name: 'list_sessions',
+        description: 'List all terminal sessions with their IDs, labels, connection status, and WebSocket URLs.',
+        parameters: {
+          type: 'object',
+          properties: {},
+          additionalProperties: false
+        }
+      },
+      {
+        type: 'function',
+        name: 'webfetch',
+        description: 'Fetch the text content of a URL (up to 50KB).',
+        parameters: {
+          type: 'object',
+          properties: {
+            url: { type: 'string', description: 'The URL to fetch.' }
+          },
+          required: ['url'],
+          additionalProperties: false
+        }
+      }
+    ];
+
+    function executeToolCall(name, args) {
+      if (name === 'list_sessions') {
+        return JSON.stringify(sessions.map(s => ({
+          id: s.id,
+          label: s.label,
+          status: s.status,
+          wsUrl: s.wsUrl || '(not set)'
+        })), null, 2);
+      }
+
+      if (name === 'read_terminal') {
+        const session = getSession(args.session_id);
+        if (!session) return JSON.stringify({ error: `No session with ID ${args.session_id}` });
+        const lines = Math.min(args.line_count || 80, 500);
+        const content = getTerminalContent(session, lines);
+        return JSON.stringify({
+          session_id: session.id,
+          label: session.label,
+          status: session.status,
+          content
+        }, null, 2);
+      }
+
+      if (name === 'send_command') {
+        const session = getSession(args.session_id);
+        if (!session) return JSON.stringify({ error: `No session with ID ${args.session_id}` });
+        if (!session.socket || session.socket.readyState !== WebSocket.OPEN) {
+          return JSON.stringify({ error: `Session ${args.session_id} is not connected` });
+        }
+        session.socket.send(args.text);
+        return JSON.stringify({ ok: true, sent_to: session.label, text: args.text });
+      }
+
+      if (name === 'webfetch') {
+        // Async — handled separately
+        return null;
+      }
+
+      return JSON.stringify({ error: `Unknown tool: ${name}` });
+    }
+
+    // ═══════════════════════════════════════════
+    // Agent loop (OpenAI)
+    // ═══════════════════════════════════════════
+
+    const SYSTEM_PROMPT = `You are Agent Term, an AI assistant embedded in a multi-session terminal application. You can observe and interact with multiple terminal sessions.
+
+Your capabilities:
+- list_sessions: See all open terminal sessions
+- read_terminal: Read recent output from any terminal session
+- send_command: Send commands/text to any connected terminal session
+- webfetch: Fetch web content
+
+When the user asks about their terminals, use list_sessions and read_terminal to understand what's happening. Provide clear status summaries. When sending commands, always confirm with the user first unless they explicitly asked you to run something.
+
+Be concise and practical. Use terminal context to give informed answers.`;
+
+    function toOpenAIInput(messages) {
+      const out = [{ role: 'system', content: [{ type: 'input_text', text: SYSTEM_PROMPT }] }];
+      for (const msg of messages) {
+        if (msg.role === 'user' || msg.role === 'assistant') {
+          out.push({
+            role: msg.role,
+            content: [{ type: msg.role === 'user' ? 'input_text' : 'output_text', text: msg.text }]
+          });
+        }
+      }
+      return out;
+    }
+
+    function extractText(data) {
+      if (typeof data.output_text === 'string' && data.output_text.trim()) return data.output_text.trim();
+      const parts = [];
+      for (const item of data.output || []) {
+        for (const c of item.content || []) {
+          if (typeof c.text === 'string') parts.push(c.text);
+        }
+      }
+      return parts.join('\n').trim();
+    }
+
+    function extractCalls(data) {
+      const calls = [];
+      for (const item of data.output || []) {
+        if (item.type === 'function_call') {
+          calls.push({
+            id: item.call_id || item.id || `call_${Math.random().toString(36).slice(2)}`,
+            name: item.name,
+            arguments: item.arguments || '{}'
+          });
+        }
+      }
+      return calls;
+    }
+
+    async function callAPI(payload, signal) {
+      const apiKey = apiKeyInput.value.trim();
+      if (!apiKey) throw new Error('Missing OpenAI API token.');
+
+      const res = await fetch('https://api.openai.com/v1/responses', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
+        body: JSON.stringify(payload),
+        signal
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error?.message || `HTTP ${res.status}`);
+      return data;
+    }
+
+    async function runAgentTurn(userText) {
+      if (chatState.running) return;
+      chatState.running = true;
+      chatState.abortController = new AbortController();
+      setAgentStatus('Running', 'warn');
+
+      addMessage('user', userText, 'user', 'you');
+
+      const conversation = chatState.messages.filter(m => m.role === 'user' || m.role === 'assistant');
+      let input = toOpenAIInput(conversation);
+      let guard = 0;
+
+      try {
+        while (guard < 12) {
+          guard++;
+          const response = await callAPI({
+            model: modelInput.value.trim() || 'gpt-5.4',
+            input,
+            tools: TOOLS,
+            tool_choice: 'auto'
+          }, chatState.abortController.signal);
+
+          const functionCalls = extractCalls(response);
+          const assistantText = extractText(response);
+
+          if (assistantText) {
+            addMessage('assistant', assistantText, 'assistant', 'agent');
+          }
+
+          if (!functionCalls.length) {
+            setAgentStatus('Ready', 'ok');
+            break;
+          }
+
+          for (const call of functionCalls) {
+            let args = {};
+            try { args = JSON.parse(call.arguments || '{}'); } catch {
+              throw new Error(`Invalid tool args for ${call.name}`);
+            }
+
+            chatState.toolCalls++;
+            addMessage('tool', `${call.name}(${JSON.stringify(args)})`, 'tool', 'tool call');
+
+            let result;
+            if (call.name === 'webfetch') {
+              try {
+                const text = await window.__slopos_webfetch(args.url);
+                result = JSON.stringify({ url: args.url, content: text });
+              } catch (err) {
+                result = JSON.stringify({ error: err.message });
+              }
+            } else {
+              result = executeToolCall(call.name, args);
+            }
+
+            addMessage('tool', result, 'tool', 'tool result');
+
+            input = [
+              ...input,
+              ...response.output,
+              { type: 'function_call_output', call_id: call.id, output: result }
+            ];
+          }
+        }
+
+        if (guard >= 12) {
+          addMessage('error', 'Stopped after too many tool iterations.', 'error', 'error');
+          setAgentStatus('Stopped', 'warn');
+        }
+      } catch (err) {
+        if (err.name === 'AbortError') {
+          addMessage('system', 'Stopped.', 'system', 'system');
+          setAgentStatus('Stopped', 'warn');
+        } else {
+          addMessage('error', err.message || String(err), 'error', 'error');
+          setAgentStatus('Error', 'err');
+        }
+      } finally {
+        chatState.running = false;
+        chatState.abortController = null;
+        saveChatState();
+      }
+    }
+
+    sendBtn.addEventListener('click', () => {
+      const text = userInput.value.trim();
+      if (!text) return;
+      userInput.value = '';
+      runAgentTurn(text);
+    });
+
+    userInput.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        sendBtn.click();
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      chatState.abortController?.abort();
+    });
+
+    // ═══════════════════════════════════════════
+    // webfetch bridge fallback
+    // ═══════════════════════════════════════════
+
+    if (!window.__slopos_webfetch) {
+      window.__slopos_webfetch = async (url) => {
+        const res = await fetch(url);
+        const text = await res.text();
+        return text.slice(0, 50000);
+      };
+    }
+
+    // ═══════════════════════════════════════════
+    // SlopOS visibility
+    // ═══════════════════════════════════════════
+
+    let isVisible = true;
+    window.addEventListener('message', (e) => {
+      if (e.data?.type === 'slopos-visibility') {
+        isVisible = e.data.state === 'active';
+        if (isVisible) {
+          const session = getSession(activeSessionId);
+          if (session) setTimeout(() => session.terminal.refresh(0, session.terminal.rows - 1), 0);
+        }
+      }
+    });
+    window.parent.postMessage({ type: 'slopos-get-visibility' }, '*');
+
+    // ═══════════════════════════════════════════
+    // Init
+    // ═══════════════════════════════════════════
+
+    loadChatState();
+    createSession('Terminal 1');
+  </script>
+</body>
+</html>
