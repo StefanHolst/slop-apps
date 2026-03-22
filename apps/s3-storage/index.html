@@ -1,0 +1,1132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>S3 Storage</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --surface2: #1a2236;
+      --border: #1e2940;
+      --text: #d0d8e8;
+      --text-dim: #6b7a94;
+      --accent: #60a5fa;
+      --accent-dim: rgba(96, 165, 250, 0.1);
+      --green: #34d399;
+      --red: #f87171;
+      --yellow: #fbbf24;
+      --radius: 8px;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header h1 { font-size: 1rem; font-weight: 700; color: var(--accent); flex: 1; }
+
+    .btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 5px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: border-color 0.15s, color 0.15s, background 0.15s;
+      white-space: nowrap;
+    }
+    .btn:hover { border-color: var(--accent); color: var(--accent); }
+    .btn.primary { background: var(--accent); border-color: var(--accent); color: #0a0e1a; font-weight: 600; }
+    .btn.primary:hover { background: #93c5fd; border-color: #93c5fd; }
+    .btn.danger:hover { border-color: var(--red); color: var(--red); }
+    .btn.active { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+    .btn:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── Settings ── */
+    #settings-panel {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+      display: none;
+    }
+    #settings-panel.open { display: block; }
+    .settings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .settings-grid .wide { grid-column: 1 / -1; }
+    .field label {
+      display: block;
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      margin-bottom: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .field input, .field select {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 6px 8px;
+      border-radius: 6px;
+      outline: none;
+    }
+    .field input:focus { border-color: var(--accent); }
+    .settings-actions { margin-top: 10px; display: flex; gap: 8px; }
+
+    /* ── Breadcrumb ── */
+    .breadcrumb {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 10px 16px;
+      font-size: 0.8rem;
+      border-bottom: 1px solid var(--border);
+      flex-wrap: wrap;
+    }
+    .breadcrumb span { color: var(--text-dim); }
+    .breadcrumb a {
+      color: var(--accent);
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .breadcrumb a:hover { text-decoration: underline; }
+
+    /* ── Toolbar ── */
+    .toolbar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .toolbar .search {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 5px 8px;
+      border-radius: 6px;
+      outline: none;
+    }
+    .toolbar .search:focus { border-color: var(--accent); }
+
+    /* ── File list ── */
+    .file-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 0;
+    }
+    .file-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background 0.1s;
+    }
+    .file-item:hover { background: var(--surface); }
+    .file-item.selected { background: var(--accent-dim); }
+    .file-icon { font-size: 1rem; width: 24px; text-align: center; flex-shrink: 0; }
+    .file-name { flex: 1; font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .file-size { font-size: 0.75rem; color: var(--text-dim); flex-shrink: 0; }
+    .file-date { font-size: 0.75rem; color: var(--text-dim); flex-shrink: 0; width: 130px; text-align: right; }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 60px 20px;
+      color: var(--text-dim);
+      font-size: 0.85rem;
+      gap: 10px;
+    }
+    .empty-state .icon { font-size: 2rem; }
+
+    /* ── Status bar ── */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 0.7rem;
+      color: var(--text-dim);
+      background: var(--surface);
+    }
+    .status-bar .fill { flex: 1; }
+    .status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
+    .status-dot.ok { background: var(--green); }
+
+    /* ── Modal overlay ── */
+    .modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 100;
+      align-items: center;
+      justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      width: 90%;
+      max-width: 600px;
+      max-height: 80vh;
+      overflow-y: auto;
+    }
+    .modal h2 { font-size: 0.95rem; margin-bottom: 14px; color: var(--accent); }
+    .modal .field { margin-bottom: 10px; }
+    .modal .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 16px; }
+    .modal textarea {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 0.8rem;
+      padding: 8px;
+      border-radius: 6px;
+      outline: none;
+      resize: vertical;
+      min-height: 120px;
+    }
+    .modal textarea:focus { border-color: var(--accent); }
+    .modal .preview-hex {
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      font-size: 0.75rem;
+      max-height: 300px;
+      overflow: auto;
+      white-space: pre;
+      color: var(--text-dim);
+      line-height: 1.5;
+    }
+    .modal .info-row {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 0;
+      font-size: 0.8rem;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal .info-row .label { color: var(--text-dim); }
+
+    /* ── Progress ── */
+    .progress-bar {
+      height: 3px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+    .progress-bar .fill-bar {
+      height: 100%;
+      background: var(--accent);
+      transition: width 0.3s;
+      width: 0%;
+    }
+
+    /* ── Toast ── */
+    .toast-container {
+      position: fixed;
+      bottom: 40px;
+      right: 16px;
+      z-index: 200;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .toast {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px 14px;
+      font-size: 0.8rem;
+      color: var(--text);
+      animation: toast-in 0.2s ease;
+    }
+    .toast.error { border-color: var(--red); color: var(--red); }
+    .toast.success { border-color: var(--green); color: var(--green); }
+    @keyframes toast-in { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+    /* Drop zone */
+    .drop-active { outline: 2px dashed var(--accent); outline-offset: -4px; }
+
+    @media (max-width: 600px) {
+      .settings-grid { grid-template-columns: 1fr; }
+      .file-date { display: none; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <h1>S3 Storage</h1>
+  <button class="btn" id="btn-refresh" title="Refresh">Refresh</button>
+  <button class="btn" id="btn-upload">Upload</button>
+  <button class="btn" id="btn-new-folder">New Folder</button>
+  <button class="btn" id="btn-settings">Settings</button>
+</div>
+
+<div id="settings-panel">
+  <div class="settings-grid">
+    <div class="field wide">
+      <label>Endpoint URL</label>
+      <input id="cfg-endpoint" placeholder="https://s3.amazonaws.com or compatible endpoint">
+    </div>
+    <div class="field">
+      <label>Bucket</label>
+      <input id="cfg-bucket" placeholder="my-bucket">
+    </div>
+    <div class="field">
+      <label>Region</label>
+      <input id="cfg-region" placeholder="us-east-1" value="us-east-1">
+    </div>
+    <div class="field">
+      <label>Access Key</label>
+      <input id="cfg-access-key" placeholder="AKIA...">
+    </div>
+    <div class="field">
+      <label>Secret Key</label>
+      <input id="cfg-secret-key" type="password" placeholder="secret">
+    </div>
+    <div class="field">
+      <label>Path Style</label>
+      <select id="cfg-path-style">
+        <option value="true">Path style (endpoint/bucket)</option>
+        <option value="false">Virtual hosted (bucket.endpoint)</option>
+      </select>
+    </div>
+  </div>
+  <div class="settings-actions">
+    <button class="btn primary" id="btn-save-settings">Save & Connect</button>
+    <button class="btn" id="btn-cancel-settings">Cancel</button>
+  </div>
+</div>
+
+<div class="breadcrumb" id="breadcrumb"></div>
+
+<div class="toolbar">
+  <input class="search" id="search" placeholder="Filter objects...">
+</div>
+
+<div class="file-list" id="file-list"></div>
+
+<!-- Upload modal -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal">
+    <h2>Upload Object</h2>
+    <div class="field">
+      <label>Key (path)</label>
+      <input id="upload-key">
+    </div>
+    <div class="field">
+      <label>File</label>
+      <input type="file" id="upload-file">
+    </div>
+    <div class="field">
+      <label>Or paste text content</label>
+      <textarea id="upload-text" placeholder="Text content..."></textarea>
+    </div>
+    <div class="progress-bar" id="upload-progress"><div class="fill-bar"></div></div>
+    <div class="actions">
+      <button class="btn" id="upload-cancel">Cancel</button>
+      <button class="btn primary" id="upload-submit">Upload</button>
+    </div>
+  </div>
+</div>
+
+<!-- View/Read modal -->
+<div class="modal-overlay" id="view-modal">
+  <div class="modal">
+    <h2 id="view-title">Object</h2>
+    <div id="view-info"></div>
+    <div class="field" style="margin-top:12px">
+      <label>Partial Read (Range)</label>
+      <div style="display:flex;gap:6px;align-items:center;">
+        <input id="range-start" placeholder="Start byte" style="width:100px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:0.8rem;padding:4px 6px;border-radius:4px;">
+        <span style="color:var(--text-dim)">-</span>
+        <input id="range-end" placeholder="End byte" style="width:100px;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:inherit;font-size:0.8rem;padding:4px 6px;border-radius:4px;">
+        <button class="btn" id="btn-read-range">Read Range</button>
+        <button class="btn" id="btn-read-full">Read Full</button>
+      </div>
+    </div>
+    <div class="preview-hex" id="view-content" style="margin-top:10px"></div>
+    <div class="progress-bar" id="read-progress"><div class="fill-bar"></div></div>
+    <div class="actions">
+      <button class="btn danger" id="btn-delete-obj">Delete</button>
+      <button class="btn" id="btn-download">Download</button>
+      <button class="btn" id="view-close">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Write partial modal -->
+<div class="modal-overlay" id="write-modal">
+  <div class="modal">
+    <h2>Write to Object</h2>
+    <div class="field">
+      <label>Key</label>
+      <input id="write-key" readonly>
+    </div>
+    <div class="field">
+      <label>Offset (byte position to write at)</label>
+      <input id="write-offset" placeholder="0" value="0">
+    </div>
+    <div class="field">
+      <label>Data (text)</label>
+      <textarea id="write-data" placeholder="Data to write..."></textarea>
+    </div>
+    <div class="field">
+      <label>Or file</label>
+      <input type="file" id="write-file">
+    </div>
+    <div class="actions">
+      <button class="btn" id="write-cancel">Cancel</button>
+      <button class="btn primary" id="write-submit">Write</button>
+    </div>
+  </div>
+</div>
+
+<div class="status-bar">
+  <div class="status-dot" id="status-dot"></div>
+  <span id="status-text">Not connected</span>
+  <div class="fill"></div>
+  <span id="status-count"></span>
+</div>
+
+<div class="toast-container" id="toasts"></div>
+
+<script>
+// ─── S3 Client with AWS Signature V4 ───────────────────────────────────────
+const S3 = (() => {
+  let cfg = null;
+
+  function load() {
+    const raw = localStorage.getItem('s3cfg');
+    if (raw) cfg = JSON.parse(raw);
+    return cfg;
+  }
+
+  function save(c) {
+    cfg = c;
+    localStorage.setItem('s3cfg', JSON.stringify(c));
+  }
+
+  function getConfig() { return cfg; }
+
+  function bucketUrl() {
+    const ep = cfg.endpoint.replace(/\/+$/, '');
+    if (cfg.pathStyle) return `${ep}/${cfg.bucket}`;
+    const u = new URL(ep);
+    u.hostname = `${cfg.bucket}.${u.hostname}`;
+    return u.toString().replace(/\/+$/, '');
+  }
+
+  function hostHeader() {
+    const ep = cfg.endpoint.replace(/\/+$/, '');
+    const u = new URL(ep);
+    if (cfg.pathStyle) return u.host;
+    return `${cfg.bucket}.${u.host}`;
+  }
+
+  // AWS Signature V4
+  const enc = new TextEncoder();
+
+  async function hmac(key, msg) {
+    const k = (key instanceof ArrayBuffer) ? key : enc.encode(key);
+    const cryptoKey = await crypto.subtle.importKey('raw', k, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+    return crypto.subtle.sign('HMAC', cryptoKey, enc.encode(msg));
+  }
+
+  async function sha256(data) {
+    const buf = (typeof data === 'string') ? enc.encode(data) : data;
+    const hash = await crypto.subtle.digest('SHA-256', buf);
+    return hex(hash);
+  }
+
+  function hex(buf) {
+    return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
+  async function signingKey(date) {
+    const kDate = await hmac('AWS4' + cfg.secretKey, date);
+    const kRegion = await hmac(kDate, cfg.region);
+    const kService = await hmac(kRegion, 's3');
+    return hmac(kService, 'aws4_request');
+  }
+
+  function uriEncode(str, encodeSlash = true) {
+    return str.split('').map(ch => {
+      if ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9') || ch === '_' || ch === '-' || ch === '~' || ch === '.') return ch;
+      if (ch === '/' && !encodeSlash) return '/';
+      return '%' + ch.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
+    }).join('');
+  }
+
+  async function signedRequest(method, path, query = {}, headers = {}, body = '') {
+    const now = new Date();
+    const dateStamp = now.toISOString().replace(/[-:]/g, '').slice(0, 8);
+    const amzDate = now.toISOString().replace(/[-:]/g, '').replace(/\.\d+/, '');
+
+    const payloadHash = (body instanceof ArrayBuffer || body instanceof Uint8Array)
+      ? await sha256(body) : await sha256(body || '');
+
+    const reqHeaders = {
+      host: hostHeader(),
+      'x-amz-date': amzDate,
+      'x-amz-content-sha256': payloadHash,
+      ...headers,
+    };
+
+    // Canonical query string
+    const qs = Object.keys(query).sort()
+      .map(k => `${uriEncode(k)}=${uriEncode(query[k])}`)
+      .join('&');
+
+    // Canonical path
+    let canonPath;
+    if (cfg.pathStyle) {
+      canonPath = '/' + cfg.bucket + '/' + path.replace(/^\//, '');
+      if (canonPath === '/' + cfg.bucket + '/') canonPath = '/' + cfg.bucket + '/';
+    } else {
+      canonPath = '/' + path.replace(/^\//, '');
+      if (canonPath === '/') canonPath = '/';
+    }
+    canonPath = uriEncode(canonPath, false);
+
+    const signedHeaderKeys = Object.keys(reqHeaders).map(k => k.toLowerCase()).sort();
+    const signedHeadersStr = signedHeaderKeys.join(';');
+    const canonHeaders = signedHeaderKeys.map(k => `${k}:${reqHeaders[k.split('').reduce((a, c) => {
+      // Find original case key
+      return a;
+    }, '')] || reqHeaders[Object.keys(reqHeaders).find(h => h.toLowerCase() === k)]}`).join('\n') + '\n';
+
+    const canonReq = [method, canonPath, qs, canonHeaders, signedHeadersStr, payloadHash].join('\n');
+    const credScope = `${dateStamp}/${cfg.region}/s3/aws4_request`;
+    const strToSign = ['AWS4-HMAC-SHA256', amzDate, credScope, await sha256(canonReq)].join('\n');
+
+    const key = await signingKey(dateStamp);
+    const sig = hex(await crypto.subtle.sign('HMAC',
+      await crypto.subtle.importKey('raw', key, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']),
+      enc.encode(strToSign)));
+
+    const auth = `AWS4-HMAC-SHA256 Credential=${cfg.accessKey}/${credScope}, SignedHeaders=${signedHeadersStr}, Signature=${sig}`;
+
+    const url = bucketUrl() + '/' + path.replace(/^\//, '') + (qs ? '?' + qs : '');
+
+    const fetchHeaders = {};
+    for (const [k, v] of Object.entries(reqHeaders)) {
+      if (k.toLowerCase() !== 'host') fetchHeaders[k] = v;
+    }
+    fetchHeaders['Authorization'] = auth;
+
+    return fetch(url, {
+      method,
+      headers: fetchHeaders,
+      body: (method === 'GET' || method === 'HEAD' || method === 'DELETE') ? undefined : body || undefined,
+    });
+  }
+
+  async function listObjects(prefix = '', delimiter = '/') {
+    const query = { 'list-type': '2' };
+    if (prefix) query.prefix = prefix;
+    if (delimiter) query.delimiter = delimiter;
+    query['max-keys'] = '1000';
+
+    const resp = await signedRequest('GET', '', query);
+    if (!resp.ok) throw new Error(`List failed: ${resp.status} ${await resp.text()}`);
+    const xml = await resp.text();
+    return parseListResult(xml);
+  }
+
+  function parseListResult(xml) {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(xml, 'application/xml');
+    const ns = doc.documentElement.namespaceURI;
+
+    const objects = [];
+    const contents = doc.getElementsByTagNameNS(ns, 'Contents');
+    for (const c of contents) {
+      const key = c.getElementsByTagNameNS(ns, 'Key')[0]?.textContent || '';
+      const size = parseInt(c.getElementsByTagNameNS(ns, 'Size')[0]?.textContent || '0');
+      const modified = c.getElementsByTagNameNS(ns, 'LastModified')[0]?.textContent || '';
+      const etag = c.getElementsByTagNameNS(ns, 'ETag')[0]?.textContent || '';
+      objects.push({ key, size, modified, etag });
+    }
+
+    const prefixes = [];
+    const commonPrefixes = doc.getElementsByTagNameNS(ns, 'CommonPrefixes');
+    for (const cp of commonPrefixes) {
+      const p = cp.getElementsByTagNameNS(ns, 'Prefix')[0]?.textContent || '';
+      prefixes.push(p);
+    }
+
+    const truncated = doc.getElementsByTagNameNS(ns, 'IsTruncated')[0]?.textContent === 'true';
+    return { objects, prefixes, truncated };
+  }
+
+  async function headObject(key) {
+    const resp = await signedRequest('HEAD', key);
+    if (!resp.ok) throw new Error(`HEAD failed: ${resp.status}`);
+    return {
+      contentLength: parseInt(resp.headers.get('content-length') || '0'),
+      contentType: resp.headers.get('content-type') || '',
+      lastModified: resp.headers.get('last-modified') || '',
+      etag: resp.headers.get('etag') || '',
+    };
+  }
+
+  async function getObject(key, rangeStart, rangeEnd) {
+    const headers = {};
+    if (rangeStart != null || rangeEnd != null) {
+      const s = rangeStart != null ? rangeStart : '';
+      const e = rangeEnd != null ? rangeEnd : '';
+      headers['range'] = `bytes=${s}-${e}`;
+    }
+    const resp = await signedRequest('GET', key, {}, headers);
+    if (!resp.ok && resp.status !== 206) throw new Error(`GET failed: ${resp.status}`);
+    const contentRange = resp.headers.get('content-range') || null;
+    const contentLength = parseInt(resp.headers.get('content-length') || '0');
+    const buf = await resp.arrayBuffer();
+    return { data: new Uint8Array(buf), contentRange, contentLength, status: resp.status };
+  }
+
+  async function putObject(key, data, contentType = 'application/octet-stream') {
+    const body = (data instanceof Uint8Array || data instanceof ArrayBuffer) ? data : enc.encode(data);
+    const headers = { 'content-type': contentType };
+    const resp = await signedRequest('PUT', key, {}, headers, body);
+    if (!resp.ok) throw new Error(`PUT failed: ${resp.status} ${await resp.text()}`);
+    return true;
+  }
+
+  async function deleteObject(key) {
+    const resp = await signedRequest('DELETE', key);
+    if (!resp.ok && resp.status !== 204) throw new Error(`DELETE failed: ${resp.status}`);
+    return true;
+  }
+
+  // Write at offset: read existing, splice, write back
+  async function writeAtOffset(key, offset, newData) {
+    let existing;
+    try {
+      const result = await getObject(key);
+      existing = result.data;
+    } catch {
+      existing = new Uint8Array(0);
+    }
+    const off = parseInt(offset) || 0;
+    const incoming = (newData instanceof Uint8Array) ? newData : enc.encode(newData);
+    const totalLen = Math.max(existing.length, off + incoming.length);
+    const merged = new Uint8Array(totalLen);
+    merged.set(existing);
+    merged.set(incoming, off);
+    await putObject(key, merged);
+    return merged.length;
+  }
+
+  return { load, save, getConfig, listObjects, headObject, getObject, putObject, deleteObject, writeAtOffset };
+})();
+
+
+// ─── UI ─────────────────────────────────────────────────────────────────────
+let currentPrefix = '';
+
+const $ = id => document.getElementById(id);
+
+function toast(msg, type = '') {
+  const el = document.createElement('div');
+  el.className = 'toast ' + type;
+  el.textContent = msg;
+  $('toasts').appendChild(el);
+  setTimeout(() => el.remove(), 4000);
+}
+
+function formatSize(bytes) {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return (bytes / Math.pow(1024, i)).toFixed(i ? 1 : 0) + ' ' + units[i];
+}
+
+function formatDate(d) {
+  if (!d) return '';
+  const dt = new Date(d);
+  return dt.toLocaleDateString() + ' ' + dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+}
+
+function renderBreadcrumb() {
+  const bc = $('breadcrumb');
+  const parts = currentPrefix.split('/').filter(Boolean);
+  let html = '<a data-prefix="">bucket</a>';
+  let accum = '';
+  for (const p of parts) {
+    accum += p + '/';
+    html += ` <span>/</span> <a data-prefix="${accum}">${p}</a>`;
+  }
+  bc.innerHTML = html;
+  bc.querySelectorAll('a').forEach(a => {
+    a.addEventListener('click', () => {
+      currentPrefix = a.dataset.prefix;
+      refresh();
+    });
+  });
+}
+
+function renderFileList(objects, prefixes, filter = '') {
+  const list = $('file-list');
+  const items = [];
+
+  for (const p of prefixes) {
+    const name = p.replace(currentPrefix, '').replace(/\/$/, '');
+    if (filter && !name.toLowerCase().includes(filter.toLowerCase())) continue;
+    items.push({ type: 'folder', name, prefix: p });
+  }
+  for (const obj of objects) {
+    const name = obj.key.replace(currentPrefix, '');
+    if (!name || name.endsWith('/')) continue;
+    if (filter && !name.toLowerCase().includes(filter.toLowerCase())) continue;
+    items.push({ type: 'file', name, ...obj });
+  }
+
+  if (items.length === 0) {
+    list.innerHTML = `<div class="empty-state"><div class="icon">&#128194;</div><div>${filter ? 'No matches' : 'Empty'}</div></div>`;
+    $('status-count').textContent = '0 objects';
+    return;
+  }
+
+  list.innerHTML = items.map(item => {
+    if (item.type === 'folder') {
+      return `<div class="file-item" data-type="folder" data-prefix="${item.prefix}">
+        <div class="file-icon">&#128193;</div>
+        <div class="file-name">${item.name}/</div>
+        <div class="file-size"></div>
+        <div class="file-date"></div>
+      </div>`;
+    }
+    return `<div class="file-item" data-type="file" data-key="${item.key}">
+      <div class="file-icon">&#128196;</div>
+      <div class="file-name">${item.name}</div>
+      <div class="file-size">${formatSize(item.size)}</div>
+      <div class="file-date">${formatDate(item.modified)}</div>
+    </div>`;
+  }).join('');
+
+  list.querySelectorAll('.file-item').forEach(el => {
+    el.addEventListener('click', () => {
+      if (el.dataset.type === 'folder') {
+        currentPrefix = el.dataset.prefix;
+        refresh();
+      } else {
+        openViewModal(el.dataset.key);
+      }
+    });
+  });
+
+  $('status-count').textContent = `${items.length} item${items.length !== 1 ? 's' : ''}`;
+}
+
+async function refresh() {
+  renderBreadcrumb();
+  if (!S3.getConfig()) {
+    $('file-list').innerHTML = '<div class="empty-state"><div class="icon">&#9881;</div><div>Configure S3 connection in Settings</div></div>';
+    $('status-dot').classList.remove('ok');
+    $('status-text').textContent = 'Not connected';
+    return;
+  }
+  try {
+    $('status-text').textContent = 'Loading...';
+    const { objects, prefixes } = await S3.listObjects(currentPrefix);
+    renderFileList(objects, prefixes, $('search').value);
+    $('status-dot').classList.add('ok');
+    $('status-text').textContent = 'Connected';
+  } catch (e) {
+    $('file-list').innerHTML = `<div class="empty-state"><div class="icon">&#9888;</div><div>${e.message}</div></div>`;
+    $('status-dot').classList.remove('ok');
+    $('status-text').textContent = 'Error';
+    toast(e.message, 'error');
+  }
+}
+
+// ── Settings ──
+function loadSettingsUI() {
+  const c = S3.getConfig();
+  if (c) {
+    $('cfg-endpoint').value = c.endpoint || '';
+    $('cfg-bucket').value = c.bucket || '';
+    $('cfg-region').value = c.region || 'us-east-1';
+    $('cfg-access-key').value = c.accessKey || '';
+    $('cfg-secret-key').value = c.secretKey || '';
+    $('cfg-path-style').value = c.pathStyle ? 'true' : 'false';
+  }
+}
+
+$('btn-settings').addEventListener('click', () => {
+  $('settings-panel').classList.toggle('open');
+  loadSettingsUI();
+});
+$('btn-cancel-settings').addEventListener('click', () => $('settings-panel').classList.remove('open'));
+$('btn-save-settings').addEventListener('click', () => {
+  S3.save({
+    endpoint: $('cfg-endpoint').value.trim(),
+    bucket: $('cfg-bucket').value.trim(),
+    region: $('cfg-region').value.trim() || 'us-east-1',
+    accessKey: $('cfg-access-key').value.trim(),
+    secretKey: $('cfg-secret-key').value.trim(),
+    pathStyle: $('cfg-path-style').value === 'true',
+  });
+  $('settings-panel').classList.remove('open');
+  toast('Settings saved', 'success');
+  refresh();
+});
+
+// ── Refresh ──
+$('btn-refresh').addEventListener('click', refresh);
+
+// ── Search ──
+let searchTimeout;
+$('search').addEventListener('input', () => {
+  clearTimeout(searchTimeout);
+  searchTimeout = setTimeout(refresh, 200);
+});
+
+// ── Upload ──
+$('btn-upload').addEventListener('click', () => {
+  $('upload-key').value = currentPrefix;
+  $('upload-text').value = '';
+  $('upload-file').value = '';
+  $('upload-progress').querySelector('.fill-bar').style.width = '0%';
+  $('upload-modal').classList.add('open');
+});
+$('upload-cancel').addEventListener('click', () => $('upload-modal').classList.remove('open'));
+$('upload-file').addEventListener('change', () => {
+  const file = $('upload-file').files[0];
+  if (file && !$('upload-key').value.replace(currentPrefix, '')) {
+    $('upload-key').value = currentPrefix + file.name;
+  }
+});
+$('upload-submit').addEventListener('click', async () => {
+  const key = $('upload-key').value.trim();
+  if (!key) return toast('Key is required', 'error');
+  try {
+    $('upload-progress').querySelector('.fill-bar').style.width = '50%';
+    const file = $('upload-file').files[0];
+    if (file) {
+      const buf = await file.arrayBuffer();
+      await S3.putObject(key, new Uint8Array(buf), file.type || 'application/octet-stream');
+    } else {
+      const text = $('upload-text').value;
+      await S3.putObject(key, text, 'text/plain');
+    }
+    $('upload-progress').querySelector('.fill-bar').style.width = '100%';
+    toast('Uploaded ' + key, 'success');
+    $('upload-modal').classList.remove('open');
+    refresh();
+  } catch (e) {
+    toast(e.message, 'error');
+    $('upload-progress').querySelector('.fill-bar').style.width = '0%';
+  }
+});
+
+// ── New Folder ──
+$('btn-new-folder').addEventListener('click', async () => {
+  const name = prompt('Folder name:');
+  if (!name) return;
+  try {
+    const key = currentPrefix + name.replace(/\/$/, '') + '/';
+    await S3.putObject(key, '', 'application/x-directory');
+    toast('Created ' + key, 'success');
+    refresh();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
+
+// ── View Modal ──
+let viewKey = '';
+let viewData = null;
+
+async function openViewModal(key) {
+  viewKey = key;
+  viewData = null;
+  $('view-title').textContent = key.split('/').pop();
+  $('view-content').textContent = 'Loading metadata...';
+  $('range-start').value = '';
+  $('range-end').value = '';
+  $('view-modal').classList.add('open');
+  try {
+    const info = await S3.headObject(key);
+    $('view-info').innerHTML = `
+      <div class="info-row"><span class="label">Size</span><span>${formatSize(info.contentLength)}</span></div>
+      <div class="info-row"><span class="label">Type</span><span>${info.contentType}</span></div>
+      <div class="info-row"><span class="label">Modified</span><span>${info.lastModified}</span></div>
+      <div class="info-row"><span class="label">ETag</span><span>${info.etag}</span></div>
+    `;
+    $('view-content').textContent = 'Use "Read Full" or specify a range.';
+  } catch (e) {
+    $('view-info').innerHTML = '';
+    $('view-content').textContent = 'Error: ' + e.message;
+  }
+}
+
+function renderContent(data) {
+  // Show as text if it looks like text, otherwise hex dump
+  let isText = true;
+  for (let i = 0; i < Math.min(data.length, 512); i++) {
+    if (data[i] === 0 || (data[i] < 32 && data[i] !== 9 && data[i] !== 10 && data[i] !== 13)) {
+      isText = false;
+      break;
+    }
+  }
+  if (isText) {
+    return new TextDecoder().decode(data);
+  }
+  // Hex dump
+  let out = '';
+  for (let i = 0; i < data.length; i += 16) {
+    const addr = i.toString(16).padStart(8, '0');
+    const hexPart = [];
+    let asciiPart = '';
+    for (let j = 0; j < 16; j++) {
+      if (i + j < data.length) {
+        hexPart.push(data[i + j].toString(16).padStart(2, '0'));
+        asciiPart += (data[i + j] >= 32 && data[i + j] < 127) ? String.fromCharCode(data[i + j]) : '.';
+      } else {
+        hexPart.push('  ');
+        asciiPart += ' ';
+      }
+    }
+    out += `${addr}  ${hexPart.slice(0,8).join(' ')}  ${hexPart.slice(8).join(' ')}  |${asciiPart}|\n`;
+  }
+  return out;
+}
+
+async function readObject(rangeStart, rangeEnd) {
+  try {
+    $('read-progress').querySelector('.fill-bar').style.width = '30%';
+    const result = await S3.getObject(viewKey, rangeStart, rangeEnd);
+    viewData = result.data;
+    $('read-progress').querySelector('.fill-bar').style.width = '100%';
+    const rangeInfo = result.contentRange ? `\n[${result.contentRange}]\n\n` : '';
+    $('view-content').textContent = rangeInfo + renderContent(result.data);
+    toast(`Read ${formatSize(result.data.length)}`, 'success');
+  } catch (e) {
+    $('view-content').textContent = 'Error: ' + e.message;
+    toast(e.message, 'error');
+    $('read-progress').querySelector('.fill-bar').style.width = '0%';
+  }
+}
+
+$('btn-read-full').addEventListener('click', () => readObject(null, null));
+$('btn-read-range').addEventListener('click', () => {
+  const s = $('range-start').value.trim();
+  const e = $('range-end').value.trim();
+  readObject(s || null, e || null);
+});
+
+$('btn-download').addEventListener('click', async () => {
+  if (!viewData) {
+    try { await readObject(null, null); } catch { return; }
+  }
+  const blob = new Blob([viewData]);
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = viewKey.split('/').pop();
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+$('btn-delete-obj').addEventListener('click', async () => {
+  if (!confirm('Delete ' + viewKey + '?')) return;
+  try {
+    await S3.deleteObject(viewKey);
+    toast('Deleted', 'success');
+    $('view-modal').classList.remove('open');
+    refresh();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
+
+$('view-close').addEventListener('click', () => $('view-modal').classList.remove('open'));
+
+// ── Write Partial ──
+// Triggered from view modal via context or by other apps
+function openWriteModal(key) {
+  $('write-key').value = key;
+  $('write-offset').value = '0';
+  $('write-data').value = '';
+  $('write-file').value = '';
+  $('write-modal').classList.add('open');
+}
+
+$('write-cancel').addEventListener('click', () => $('write-modal').classList.remove('open'));
+$('write-submit').addEventListener('click', async () => {
+  const key = $('write-key').value.trim();
+  const offset = parseInt($('write-offset').value) || 0;
+  try {
+    const file = $('write-file').files[0];
+    let data;
+    if (file) {
+      data = new Uint8Array(await file.arrayBuffer());
+    } else {
+      data = $('write-data').value;
+    }
+    const newSize = await S3.writeAtOffset(key, offset, data);
+    toast(`Written at offset ${offset}, new size: ${formatSize(newSize)}`, 'success');
+    $('write-modal').classList.remove('open');
+    refresh();
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+});
+
+// ── Drag & Drop ──
+const fileList = $('file-list');
+fileList.addEventListener('dragover', e => { e.preventDefault(); fileList.classList.add('drop-active'); });
+fileList.addEventListener('dragleave', () => fileList.classList.remove('drop-active'));
+fileList.addEventListener('drop', async e => {
+  e.preventDefault();
+  fileList.classList.remove('drop-active');
+  for (const file of e.dataTransfer.files) {
+    try {
+      const key = currentPrefix + file.name;
+      const buf = await file.arrayBuffer();
+      await S3.putObject(key, new Uint8Array(buf), file.type || 'application/octet-stream');
+      toast('Uploaded ' + file.name, 'success');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  }
+  refresh();
+});
+
+// ── Close modals on overlay click ──
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', e => {
+    if (e.target === overlay) overlay.classList.remove('open');
+  });
+});
+
+// ── Keyboard ──
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    document.querySelectorAll('.modal-overlay.open').forEach(m => m.classList.remove('open'));
+  }
+});
+
+
+// ─── PostMessage API for other apps ─────────────────────────────────────────
+// Other apps can use this via postMessage to this window/iframe.
+//
+// Protocol:
+//   request:  { id, action, ...params }
+//   response: { id, ok, result | error }
+//
+// Actions:
+//   list     { prefix?, delimiter? }          → { objects, prefixes }
+//   get      { key, rangeStart?, rangeEnd? }  → { data (base64), contentRange? }
+//   put      { key, data (base64), contentType? } → {}
+//   write    { key, offset, data (base64) }   → { newSize }
+//   delete   { key }                          → {}
+//   head     { key }                          → { contentLength, contentType, lastModified, etag }
+//
+window.addEventListener('message', async (event) => {
+  const msg = event.data;
+  if (!msg || !msg.action || !msg.id) return;
+
+  const respond = (ok, payload) => {
+    event.source.postMessage({ id: msg.id, ok, ...payload }, event.origin === 'null' ? '*' : event.origin);
+  };
+
+  try {
+    switch (msg.action) {
+      case 'list': {
+        const result = await S3.listObjects(msg.prefix || '', msg.delimiter ?? '/');
+        respond(true, { result });
+        break;
+      }
+      case 'head': {
+        const result = await S3.headObject(msg.key);
+        respond(true, { result });
+        break;
+      }
+      case 'get': {
+        const result = await S3.getObject(msg.key, msg.rangeStart ?? null, msg.rangeEnd ?? null);
+        // Convert Uint8Array to base64
+        let binary = '';
+        for (let i = 0; i < result.data.length; i++) binary += String.fromCharCode(result.data[i]);
+        const b64 = btoa(binary);
+        respond(true, { result: { data: b64, contentRange: result.contentRange, contentLength: result.contentLength } });
+        break;
+      }
+      case 'put': {
+        const raw = atob(msg.data || '');
+        const arr = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+        await S3.putObject(msg.key, arr, msg.contentType || 'application/octet-stream');
+        respond(true, { result: {} });
+        break;
+      }
+      case 'write': {
+        const raw = atob(msg.data || '');
+        const arr = new Uint8Array(raw.length);
+        for (let i = 0; i < raw.length; i++) arr[i] = raw.charCodeAt(i);
+        const newSize = await S3.writeAtOffset(msg.key, msg.offset || 0, arr);
+        respond(true, { result: { newSize } });
+        break;
+      }
+      case 'delete': {
+        await S3.deleteObject(msg.key);
+        respond(true, { result: {} });
+        break;
+      }
+      default:
+        respond(false, { error: 'Unknown action: ' + msg.action });
+    }
+  } catch (e) {
+    respond(false, { error: e.message });
+  }
+});
+
+
+// ── Init ──
+S3.load();
+loadSettingsUI();
+refresh();
+</script>
+</body>
+</html>
