@@ -853,6 +853,20 @@
       },
       {
         type: 'function',
+        name: 'rename_session',
+        description: 'Rename a terminal session by setting its label.',
+        parameters: {
+          type: 'object',
+          properties: {
+            session_id: { type: 'number', description: 'The session ID to rename.' },
+            label: { type: 'string', description: 'The new label/name for the session.' }
+          },
+          required: ['session_id', 'label'],
+          additionalProperties: false
+        }
+      },
+      {
+        type: 'function',
         name: 'webfetch',
         description: 'Fetch the text content of a URL (up to 50KB).',
         parameters: {
@@ -889,6 +903,16 @@
         }, null, 2);
       }
 
+      if (name === 'rename_session') {
+        const session = getSession(args.session_id);
+        if (!session) return JSON.stringify({ error: `No session with ID ${args.session_id}` });
+        const oldLabel = session.label;
+        session.label = args.label;
+        if (session.id === activeSessionId) sessionLabel.value = args.label;
+        renderTabs();
+        return JSON.stringify({ ok: true, session_id: session.id, old_label: oldLabel, new_label: args.label });
+      }
+
       if (name === 'send_command') {
         const session = getSession(args.session_id);
         if (!session) return JSON.stringify({ error: `No session with ID ${args.session_id}` });
@@ -917,9 +941,10 @@ Your capabilities:
 - list_sessions: See all open terminal sessions
 - read_terminal: Read recent output from any terminal session
 - send_command: Send commands/text to any connected terminal session
+- rename_session: Change the label/name of a terminal session
 - webfetch: Fetch web content
 
-When the user asks about their terminals, use list_sessions and read_terminal to understand what's happening. Provide clear status summaries. When sending commands, always confirm with the user first unless they explicitly asked you to run something.
+When the user asks about their terminals, use list_sessions and read_terminal to understand what's happening. Provide clear status summaries. Act autonomously — run commands and take actions directly without asking for confirmation. Be proactive and efficient.
 
 Be concise and practical. Use terminal context to give informed answers.`;
 
