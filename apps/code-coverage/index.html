@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Coverage</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0e1a;
+      --surface: #111827;
+      --surface2: #1a2236;
+      --border: #1e2940;
+      --text: #d0d8e8;
+      --text-dim: #6b7a94;
+      --accent: #60a5fa;
+      --accent-dim: rgba(96, 165, 250, 0.1);
+      --green: #34d399;
+      --green-dim: rgba(52, 211, 153, 0.08);
+      --yellow: #fbbf24;
+      --yellow-dim: rgba(251, 191, 36, 0.08);
+      --red: #f87171;
+      --red-dim: rgba(248, 113, 113, 0.08);
+      --radius: 8px;
+    }
+
+    body {
+      font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 40px 20px;
+    }
+
+    .container { max-width: 900px; width: 100%; }
+
+    h1 { font-size: 1.5rem; font-weight: 700; margin-bottom: 4px; }
+    .subtitle { color: var(--text-dim); font-size: 0.85rem; margin-bottom: 24px; }
+
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 32px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin-bottom: 16px;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.dragover {
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+    .drop-zone-text { color: var(--text-dim); font-size: 0.85rem; }
+    .drop-zone-text strong { color: var(--accent); }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer;
+    }
+    .drop-zone-filename {
+      margin-top: 10px;
+      font-size: 0.75rem;
+      color: var(--accent);
+      word-break: break-all;
+    }
+
+    .sep { height: 1px; background: var(--border); margin: 20px 0; }
+
+    .section-title {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-dim);
+      margin-bottom: 8px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 20px;
+    }
+    .summary-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+    }
+    .summary-card-label {
+      font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--text-dim); margin-bottom: 8px;
+    }
+    .summary-card-value { font-size: 1.6rem; font-weight: 700; }
+    .summary-card-sub { font-size: 0.75rem; color: var(--text-dim); margin-top: 4px; }
+
+    .cov-bar-wrap {
+      background: rgba(255,255,255,0.05);
+      border-radius: 4px; height: 6px; overflow: hidden; margin-top: 8px;
+    }
+    .cov-bar { height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+
+    .cov-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .cov-table th {
+      text-align: left; font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--text-dim); padding: 8px 10px;
+      border-bottom: 1px solid var(--border); cursor: pointer;
+      user-select: none; white-space: nowrap;
+    }
+    .cov-table th:hover { color: var(--accent); }
+    .cov-table th .sort-arrow { margin-left: 4px; font-size: 0.65rem; }
+    .cov-table td {
+      padding: 7px 10px;
+      border-bottom: 1px solid rgba(30, 41, 64, 0.5);
+      white-space: nowrap;
+    }
+    .cov-table tr:hover td { background: var(--surface2); }
+    .cov-table .name-cell { white-space: normal; word-break: break-all; max-width: 300px; }
+
+    .badge {
+      font-size: 0.7rem; padding: 2px 8px; border-radius: 10px;
+      border: 1px solid; display: inline-block;
+    }
+
+    .error {
+      color: #f87171; font-size: 0.85rem; padding: 12px;
+      background: rgba(248, 113, 113, 0.08);
+      border: 1px solid rgba(248, 113, 113, 0.2);
+      border-radius: var(--radius);
+    }
+
+    .part {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); margin-bottom: 12px; overflow: hidden;
+    }
+    .part-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 8px 12px; background: var(--surface2);
+      border-bottom: 1px solid var(--border); cursor: pointer;
+    }
+    .part-header:hover { background: rgba(26, 34, 54, 0.8); }
+    .part-label {
+      font-size: 0.75rem; text-transform: uppercase;
+      letter-spacing: 0.04em; color: var(--accent);
+    }
+    .part-toggle { color: var(--text-dim); font-size: 0.75rem; }
+    .part-body { padding: 12px; font-size: 0.8rem; line-height: 1.6; overflow-x: auto; }
+    .part-body.collapsed { display: none; }
+
+    .filter-row {
+      display: flex; gap: 10px; margin-bottom: 16px;
+      align-items: center; flex-wrap: wrap;
+    }
+    .filter-input {
+      flex: 1; min-width: 200px; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      color: var(--text); font-family: inherit; font-size: 0.8rem;
+      padding: 8px 12px; outline: none; transition: border-color 0.15s;
+    }
+    .filter-input:focus { border-color: var(--accent); }
+    .filter-input::placeholder { color: var(--text-dim); }
+
+    .threshold-group {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.75rem; color: var(--text-dim);
+    }
+    .threshold-group input {
+      width: 50px; background: var(--surface); border: 1px solid var(--border);
+      border-radius: 4px; color: var(--text); font-family: inherit;
+      font-size: 0.75rem; padding: 4px 6px; outline: none; text-align: center;
+    }
+
+    .breadcrumb {
+      display: flex; align-items: center; gap: 4px;
+      margin-bottom: 12px; font-size: 0.8rem; flex-wrap: wrap;
+    }
+    .breadcrumb-item {
+      color: var(--accent); cursor: pointer; padding: 2px 6px;
+      border-radius: 4px; transition: background 0.15s;
+    }
+    .breadcrumb-item:hover { background: var(--accent-dim); }
+    .breadcrumb-sep { color: var(--text-dim); }
+    .breadcrumb-current { color: var(--text); cursor: default; }
+    .breadcrumb-current:hover { background: none; }
+
+    .empty-state { text-align: center; padding: 40px; color: var(--text-dim); font-size: 0.85rem; }
+
+    .inline-bar { display: flex; align-items: center; gap: 8px; }
+    .inline-bar-track {
+      width: 60px; height: 4px; background: rgba(255,255,255,0.05);
+      border-radius: 2px; overflow: hidden;
+    }
+    .inline-bar-fill { height: 100%; border-radius: 2px; }
+    .inline-bar-pct { font-size: 0.75rem; min-width: 44px; text-align: right; }
+  </style>
+<meta name="slopos-app-id" content="n85rmxzfk4zy">
+</head>
+<body>
+  <div class="container">
+    <h1>Coverage</h1>
+    <p class="subtitle">Inspect XML code coverage reports. Drop or browse for your file.</p>
+
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".xml,.coveragexml,.txt">
+      <div class="drop-zone-text">
+        <strong>Drop XML file here</strong> or click to browse<br>
+        <span style="font-size:0.75rem;">Supports Cobertura, JaCoCo, Clover, and Visual Studio formats</span>
+      </div>
+      <div class="drop-zone-filename" id="loadedFileName"></div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div id="output"></div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const loadedFileName = document.getElementById('loadedFileName');
+    const output = document.getElementById('output');
+
+    let thresholdHigh = 80;
+    let thresholdLow = 50;
+    let parsedData = null;
+    // currentPath: index-based navigation
+    // [] = top level (packages/assemblies)
+    // [pkgIdx] = classes within that package
+    // [pkgIdx, clsIdx] = class detail
+    let currentPath = [];
+    let sortCol = 'name';
+    let sortAsc = true;
+    let filterText = '';
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('dragover');
+      if (e.dataTransfer.files[0]) readFile(e.dataTransfer.files[0]);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) readFile(fileInput.files[0]); });
+
+    function readFile(file) {
+      loadedFileName.textContent = file.name;
+      const reader = new FileReader();
+      reader.onload = e => parseAndRender(e.target.result);
+      reader.readAsText(file);
+    }
+
+    function parseAndRender(xmlStr) {
+      xmlStr = xmlStr.trim();
+      if (!xmlStr) { output.innerHTML = ''; parsedData = null; return; }
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(xmlStr, 'text/xml');
+        const pe = doc.querySelector('parsererror');
+        if (pe) throw new Error('Invalid XML: ' + pe.textContent.substring(0, 200));
+        const root = doc.documentElement;
+        const tag = root.tagName.toLowerCase();
+
+        if (tag === 'results' && root.querySelector('modules > module')) {
+          parsedData = parseVisualStudio(root);
+        } else if (tag === 'coverage' && root.getAttribute('line-rate') !== null) {
+          parsedData = parseCobertura(root);
+        } else if (tag === 'report' && root.querySelector('counter')) {
+          parsedData = parseJaCoCo(root);
+        } else if (tag === 'coverage' && root.getAttribute('clover')) {
+          parsedData = parseClover(root);
+        } else if (tag === 'coverage' || root.querySelector('packages') || root.querySelector('package')) {
+          parsedData = parseCobertura(root);
+        } else if (tag === 'report') {
+          parsedData = parseJaCoCo(root);
+        } else {
+          throw new Error('Unrecognized coverage format.');
+        }
+
+        currentPath = [];
+        sortCol = 'name';
+        sortAsc = true;
+        filterText = '';
+        render();
+      } catch (err) {
+        output.innerHTML = `<div class="error">${escHtml(err.message)}</div>`;
+        parsedData = null;
+      }
+    }
+
+    /* ════════════════════════════════════════════════════
+       Visual Studio XML Coverage Parser
+
+       Hierarchy: Assembly (module) → Class (namespace.type_name) → Method (function)
+
+       <results>
+         <modules>
+           <module name="Foo.dll" line_coverage="..." block_coverage="..."
+                   lines_covered="..." lines_not_covered="..." lines_partially_covered="..."
+                   blocks_covered="..." blocks_not_covered="...">
+             <functions>
+               <function name="MethodName(...)" namespace="Some.Namespace" type_name="ClassName"
+                         line_coverage="..." block_coverage="..."
+                         lines_covered="..." ...>
+                 <ranges>
+                   <range source_id="0" start_line="10" end_line="10" covered="yes|no|partial"/>
+
+       Mapping to normalized model:
+         packages[]        = one per <module> (assembly/DLL)
+         packages[].classes[] = one per unique namespace.type_name within that module
+         classes[].methods[]  = one per <function>
+       ════════════════════════════════════════════════════ */
+    function parseVisualStudio(root) {
+      let totalLC = 0, totalLNC = 0, totalLPC = 0, totalBC = 0, totalBNC = 0;
+      const data = { format: 'Visual Studio', timestamp: null, version: '', summary: {}, packages: [] };
+
+      root.querySelectorAll('modules > module').forEach(mod => {
+        const moduleName = mod.getAttribute('name') || '(unknown module)';
+        const modLC  = parseInt(mod.getAttribute('lines_covered')) || 0;
+        const modLNC = parseInt(mod.getAttribute('lines_not_covered')) || 0;
+        const modLPC = parseInt(mod.getAttribute('lines_partially_covered')) || 0;
+        const modBC  = parseInt(mod.getAttribute('blocks_covered')) || 0;
+        const modBNC = parseInt(mod.getAttribute('blocks_not_covered')) || 0;
+        const modTotal = modLC + modLNC + modLPC;
+        const modBlkTotal = modBC + modBNC;
+
+        totalLC += modLC; totalLNC += modLNC; totalLPC += modLPC;
+        totalBC += modBC; totalBNC += modBNC;
+
+        // One package per assembly
+        const pkg = {
+          name: moduleName,
+          lineRate: modTotal > 0 ? modLC / modTotal : 0,
+          branchRate: modBlkTotal > 0 ? modBC / modBlkTotal : 0,
+          complexity: 0,
+          classes: []
+        };
+
+        // Group functions by "namespace.type_name" to form classes
+        const classMap = new Map(); // key = "namespace.type_name"
+
+        mod.querySelectorAll('functions > function').forEach(fn => {
+          const fnName   = fn.getAttribute('name') || '(unknown)';
+          const ns       = fn.getAttribute('namespace') || '';
+          const typeName = fn.getAttribute('type_name') || '(unknown)';
+          const fnLC     = parseInt(fn.getAttribute('lines_covered')) || 0;
+          const fnLNC    = parseInt(fn.getAttribute('lines_not_covered')) || 0;
+          const fnLPC    = parseInt(fn.getAttribute('lines_partially_covered')) || 0;
+          const fnBC     = parseInt(fn.getAttribute('blocks_covered')) || 0;
+          const fnBNC    = parseInt(fn.getAttribute('blocks_not_covered')) || 0;
+          const fnLRate  = parseFloat(fn.getAttribute('line_coverage')) || 0;
+          const fnBRate  = parseFloat(fn.getAttribute('block_coverage')) || 0;
+          const fnTotal  = fnLC + fnLNC + fnLPC;
+
+          const classKey = ns ? ns + '.' + typeName : typeName;
+
+          if (!classMap.has(classKey)) {
+            classMap.set(classKey, {
+              name: classKey,
+              filename: '',
+              lineRate: 0, branchRate: 0, complexity: 0,
+              linesCovered: 0, linesTotal: 0,
+              linesPartiallyCovered: 0,
+              blocksCovered: 0, blocksNotCovered: 0,
+              _lc: 0, _lnc: 0, _lpc: 0, _bc: 0, _bnc: 0,
+              lines: [],
+              methods: []
+            });
+          }
+          const cls = classMap.get(classKey);
+          cls._lc += fnLC; cls._lnc += fnLNC; cls._lpc += fnLPC;
+          cls._bc += fnBC; cls._bnc += fnBNC;
+
+          cls.methods.push({
+            name: fnName,
+            signature: fnName,
+            lineRate: fnLRate / 100,
+            branchRate: fnBRate / 100,
+            linesCovered: fnLC,
+            linesTotal: fnTotal,
+            linesPartiallyCovered: fnLPC,
+            blocksCovered: fnBC,
+            blocksNotCovered: fnBNC
+          });
+
+          // Parse ranges
+          fn.querySelectorAll('ranges > range').forEach(range => {
+            const startLine = parseInt(range.getAttribute('start_line')) || 0;
+            const endLine   = parseInt(range.getAttribute('end_line')) || 0;
+            const covered   = range.getAttribute('covered') || 'no';
+            for (let ln = startLine; ln <= endLine; ln++) {
+              cls.lines.push({ number: ln, covered });
+            }
+          });
+        });
+
+        // Finalize classes
+        const covPriority = { 'yes': 2, 'partial': 1, 'no': 0 };
+        classMap.forEach(cls => {
+          const t = cls._lc + cls._lnc + cls._lpc;
+          const bt = cls._bc + cls._bnc;
+          cls.lineRate = t > 0 ? cls._lc / t : 0;
+          cls.branchRate = bt > 0 ? cls._bc / bt : 0;
+          cls.linesCovered = cls._lc;
+          cls.linesTotal = t;
+          cls.linesPartiallyCovered = cls._lpc;
+          cls.blocksCovered = cls._bc;
+          cls.blocksNotCovered = cls._bnc;
+          delete cls._lc; delete cls._lnc; delete cls._lpc;
+          delete cls._bc; delete cls._bnc;
+
+          // Deduplicate lines
+          const lm = {};
+          cls.lines.forEach(l => {
+            const prev = lm[l.number];
+            if (!prev || covPriority[l.covered] > covPriority[prev.covered]) lm[l.number] = l;
+          });
+          cls.lines = Object.values(lm).sort((a, b) => a.number - b.number).map(l => ({
+            number: l.number,
+            hits: l.covered === 'yes' ? 1 : 0,
+            branch: l.covered === 'partial',
+            conditionCoverage: l.covered === 'partial' ? 'partial' : ''
+          }));
+
+          pkg.classes.push(cls);
+        });
+
+        data.packages.push(pkg);
+      });
+
+      const totalLines = totalLC + totalLNC + totalLPC;
+      const totalBlocks = totalBC + totalBNC;
+      data.summary = {
+        lineRate: totalLines > 0 ? totalLC / totalLines : 0,
+        branchRate: totalBlocks > 0 ? totalBC / totalBlocks : 0,
+        linesCovered: totalLC, linesValid: totalLines,
+        branchesCovered: totalBC, branchesValid: totalBlocks,
+        linesPartiallyCovered: totalLPC,
+        blocksCovered: totalBC, blocksNotCovered: totalBNC,
+      };
+      return data;
+    }
+
+    // ─── Cobertura ───
+    function parseCobertura(root) {
+      const data = {
+        format: 'Cobertura', timestamp: root.getAttribute('timestamp'), version: root.getAttribute('version'),
+        summary: {
+          lineRate: parseFloat(root.getAttribute('line-rate')) || 0,
+          branchRate: parseFloat(root.getAttribute('branch-rate')) || 0,
+          linesCovered: parseInt(root.getAttribute('lines-covered')) || 0,
+          linesValid: parseInt(root.getAttribute('lines-valid')) || 0,
+          branchesCovered: parseInt(root.getAttribute('branches-covered')) || 0,
+          branchesValid: parseInt(root.getAttribute('branches-valid')) || 0,
+          complexity: parseFloat(root.getAttribute('complexity')) || 0,
+        },
+        packages: []
+      };
+      root.querySelectorAll('packages > package, package').forEach(pkg => {
+        const pd = {
+          name: pkg.getAttribute('name') || '(default)',
+          lineRate: parseFloat(pkg.getAttribute('line-rate')) || 0,
+          branchRate: parseFloat(pkg.getAttribute('branch-rate')) || 0,
+          complexity: parseFloat(pkg.getAttribute('complexity')) || 0, classes: []
+        };
+        pkg.querySelectorAll('classes > class, class').forEach(cls => {
+          const cd = {
+            name: cls.getAttribute('name') || '(unknown)',
+            filename: cls.getAttribute('filename') || '',
+            lineRate: parseFloat(cls.getAttribute('line-rate')) || 0,
+            branchRate: parseFloat(cls.getAttribute('branch-rate')) || 0,
+            complexity: parseFloat(cls.getAttribute('complexity')) || 0,
+            lines: [], methods: []
+          };
+          let cov = 0, tot = 0;
+          cls.querySelectorAll('lines > line').forEach(l => {
+            const h = parseInt(l.getAttribute('hits')) || 0; tot++; if (h > 0) cov++;
+            cd.lines.push({ number: parseInt(l.getAttribute('number'))||0, hits: h,
+              branch: l.getAttribute('branch') === 'true',
+              conditionCoverage: l.getAttribute('condition-coverage') || '' });
+          });
+          cd.linesCovered = cov; cd.linesTotal = tot;
+          cls.querySelectorAll('methods > method').forEach(m => {
+            const ml = m.querySelectorAll('lines > line');
+            let mc = 0, mt = 0;
+            ml.forEach(l => { mt++; if ((parseInt(l.getAttribute('hits'))||0) > 0) mc++; });
+            cd.methods.push({
+              name: m.getAttribute('name') || '(unknown)', signature: m.getAttribute('signature') || '',
+              lineRate: parseFloat(m.getAttribute('line-rate'))||0, branchRate: parseFloat(m.getAttribute('branch-rate'))||0,
+              linesCovered: mc, linesTotal: mt });
+          });
+          pd.classes.push(cd);
+        });
+        data.packages.push(pd);
+      });
+      if (!data.summary.linesValid) {
+        let tc = 0, tv = 0;
+        data.packages.forEach(p => p.classes.forEach(c => { tc += c.linesCovered; tv += c.linesTotal; }));
+        data.summary.linesCovered = tc; data.summary.linesValid = tv;
+        if (tv > 0) data.summary.lineRate = tc / tv;
+      }
+      return data;
+    }
+
+    // ─── JaCoCo ───
+    function parseJaCoCo(root) {
+      function rc(el) {
+        const c = {};
+        el.querySelectorAll(':scope > counter').forEach(x => {
+          const t = x.getAttribute('type');
+          c[t] = { missed: parseInt(x.getAttribute('missed'))||0, covered: parseInt(x.getAttribute('covered'))||0 };
+          c[t].total = c[t].missed + c[t].covered;
+          c[t].rate = c[t].total > 0 ? c[t].covered / c[t].total : 0;
+        });
+        return c;
+      }
+      const r = rc(root);
+      const data = {
+        format: 'JaCoCo', timestamp: null, version: root.getAttribute('name') || '',
+        summary: {
+          lineRate: r.LINE ? r.LINE.rate : 0, branchRate: r.BRANCH ? r.BRANCH.rate : 0,
+          linesCovered: r.LINE ? r.LINE.covered : 0, linesValid: r.LINE ? r.LINE.total : 0,
+          branchesCovered: r.BRANCH ? r.BRANCH.covered : 0, branchesValid: r.BRANCH ? r.BRANCH.total : 0,
+          methodsCovered: r.METHOD ? r.METHOD.covered : 0, methodsTotal: r.METHOD ? r.METHOD.total : 0,
+          complexity: r.COMPLEXITY ? r.COMPLEXITY.total : 0,
+        }, packages: []
+      };
+      root.querySelectorAll(':scope > package').forEach(pkg => {
+        const pc = rc(pkg);
+        const pd = { name: pkg.getAttribute('name')||'(default)',
+          lineRate: pc.LINE ? pc.LINE.rate : 0, branchRate: pc.BRANCH ? pc.BRANCH.rate : 0,
+          complexity: pc.COMPLEXITY ? pc.COMPLEXITY.total : 0, classes: [] };
+        pkg.querySelectorAll(':scope > class').forEach(cls => {
+          const cc = rc(cls);
+          const cd = { name: cls.getAttribute('name')||'(unknown)', filename: cls.getAttribute('sourcefilename')||'',
+            lineRate: cc.LINE ? cc.LINE.rate : 0, branchRate: cc.BRANCH ? cc.BRANCH.rate : 0,
+            complexity: cc.COMPLEXITY ? cc.COMPLEXITY.total : 0,
+            linesCovered: cc.LINE ? cc.LINE.covered : 0, linesTotal: cc.LINE ? cc.LINE.total : 0,
+            lines: [], methods: [] };
+          cls.querySelectorAll(':scope > method').forEach(m => {
+            const mc = rc(m);
+            cd.methods.push({ name: m.getAttribute('name')||'(unknown)', signature: m.getAttribute('desc')||'',
+              lineRate: mc.LINE ? mc.LINE.rate : 0, branchRate: mc.BRANCH ? mc.BRANCH.rate : 0,
+              linesCovered: mc.LINE ? mc.LINE.covered : 0, linesTotal: mc.LINE ? mc.LINE.total : 0 });
+          });
+          pd.classes.push(cd);
+        });
+        data.packages.push(pd);
+      });
+      return data;
+    }
+
+    // ─── Clover ───
+    function parseClover(root) {
+      function rm(el) {
+        const m = el.querySelector(':scope > metrics');
+        if (!m) return { s:0,cs:0,co:0,cco:0,e:0,ce:0 };
+        return { s:parseInt(m.getAttribute('statements'))||0, cs:parseInt(m.getAttribute('coveredstatements'))||0,
+          co:parseInt(m.getAttribute('conditionals'))||0, cco:parseInt(m.getAttribute('coveredconditionals'))||0,
+          e:parseInt(m.getAttribute('elements'))||0, ce:parseInt(m.getAttribute('coveredelements'))||0 };
+      }
+      const proj = root.querySelector('project');
+      const pm = rm(proj||root);
+      const tl = pm.s||pm.e||0, cl = pm.cs||pm.ce||0;
+      const data = { format:'Clover', timestamp:proj?proj.getAttribute('timestamp'):null,
+        version:root.getAttribute('clover')||'',
+        summary:{ lineRate:tl>0?cl/tl:0, branchRate:pm.co>0?pm.cco/pm.co:0,
+          linesCovered:cl, linesValid:tl, branchesCovered:pm.cco, branchesValid:pm.co }, packages:[] };
+      (proj||root).querySelectorAll('package').forEach(pkg => {
+        const pkgM = rm(pkg); const pt = pkgM.s||pkgM.e||0, pc = pkgM.cs||pkgM.ce||0;
+        const pd = { name:pkg.getAttribute('name')||'(default)',
+          lineRate:pt>0?pc/pt:0, branchRate:pkgM.co>0?pkgM.cco/pkgM.co:0, complexity:0, classes:[] };
+        pkg.querySelectorAll('file').forEach(f => {
+          const fm = rm(f); const ft = fm.s||fm.e||0, fc = fm.cs||fm.ce||0;
+          const cd = { name:f.getAttribute('name')||'(unknown)', filename:f.getAttribute('path')||f.getAttribute('name')||'',
+            lineRate:ft>0?fc/ft:0, branchRate:fm.co>0?fm.cco/fm.co:0, complexity:0,
+            linesCovered:fc, linesTotal:ft, lines:[], methods:[] };
+          f.querySelectorAll('line').forEach(l => { cd.lines.push({ number:parseInt(l.getAttribute('num'))||0,
+            hits:parseInt(l.getAttribute('count'))||0, branch:l.getAttribute('type')==='cond', conditionCoverage:'' }); });
+          pd.classes.push(cd);
+        });
+        data.packages.push(pd);
+      });
+      return data;
+    }
+
+    // ═══════════════ RENDERING ═══════════════
+
+    function render() {
+      if (!parsedData) { output.innerHTML = ''; return; }
+      const isVS = parsedData.format === 'Visual Studio';
+      let html = '';
+
+      // Badge
+      html += `<div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap;align-items:center;">`;
+      html += `<span class="badge" style="color:var(--accent);border-color:rgba(96,165,250,0.3);background:var(--accent-dim);">${escHtml(parsedData.format)}</span>`;
+      if (parsedData.version) html += `<span style="font-size:0.75rem;color:var(--text-dim);">v${escHtml(parsedData.version)}</span>`;
+      if (parsedData.timestamp) {
+        const ts = parseInt(parsedData.timestamp);
+        if (ts > 1e12) html += `<span style="font-size:0.75rem;color:var(--text-dim);">${new Date(ts).toLocaleString()}</span>`;
+        else if (ts > 1e9) html += `<span style="font-size:0.75rem;color:var(--text-dim);">${new Date(ts*1000).toLocaleString()}</span>`;
+      }
+      html += `</div>`;
+
+      // Summary
+      const s = parsedData.summary;
+      html += `<div class="section-title">Summary</div><div class="summary-grid">`;
+      html += summaryCard('Line Coverage', s.lineRate*100, `${s.linesCovered} / ${s.linesValid} lines`);
+      if (isVS) {
+        html += summaryCard('Block Coverage', s.branchRate*100, `${s.blocksCovered} / ${s.blocksCovered+(s.blocksNotCovered||0)} blocks`);
+      } else {
+        html += summaryCard('Branch Coverage', s.branchRate*100, `${s.branchesCovered||0} / ${s.branchesValid||0} branches`);
+      }
+      if (s.linesPartiallyCovered > 0) html += summaryCard('Partially Covered', s.linesValid>0?(s.linesPartiallyCovered/s.linesValid)*100:0, `${s.linesPartiallyCovered} lines`);
+      if (s.methodsCovered !== undefined) html += summaryCard('Method Coverage', s.methodsTotal>0?(s.methodsCovered/s.methodsTotal)*100:0, `${s.methodsCovered} / ${s.methodsTotal} methods`);
+      if (s.complexity) html += `<div class="summary-card"><div class="summary-card-label">Complexity</div><div class="summary-card-value" style="color:var(--text);">${s.complexity}</div></div>`;
+      html += `</div><div class="sep"></div>`;
+
+      // Filter
+      html += `<div class="filter-row">`;
+      html += `<input class="filter-input" type="text" placeholder="Filter by name..." value="${escHtml(filterText)}" id="filterInput">`;
+      html += `<div class="threshold-group">🟢 ≥ <input type="number" id="threshHigh" value="${thresholdHigh}" min="0" max="100">%</div>`;
+      html += `<div class="threshold-group">🟡 ≥ <input type="number" id="threshLow" value="${thresholdLow}" min="0" max="100">%</div></div>`;
+
+      // Breadcrumb
+      if (currentPath.length > 0) {
+        const topLabel = isVS ? 'All Assemblies' : 'All Packages';
+        html += `<div class="breadcrumb"><span class="breadcrumb-item" data-nav="-1">${topLabel}</span>`;
+        const labels = breadcrumbLabels();
+        labels.forEach((lbl, i) => {
+          html += `<span class="breadcrumb-sep">›</span>`;
+          html += i === labels.length - 1
+            ? `<span class="breadcrumb-item breadcrumb-current">${escHtml(lbl)}</span>`
+            : `<span class="breadcrumb-item" data-nav="${i}">${escHtml(lbl)}</span>`;
+        });
+        html += `</div>`;
+      }
+
+      if (currentPath.length === 0) html += renderLevel0();
+      else if (currentPath.length === 1) html += renderLevel1();
+      else if (currentPath.length === 2) html += renderLevel2();
+
+      output.innerHTML = html;
+      bindEvents();
+    }
+
+    function breadcrumbLabels() {
+      const labels = [];
+      if (currentPath.length >= 1) {
+        const pkg = parsedData.packages[currentPath[0]];
+        labels.push(pkg ? pkg.name : '?');
+      }
+      if (currentPath.length >= 2) {
+        const pkg = parsedData.packages[currentPath[0]];
+        const cls = pkg ? pkg.classes[currentPath[1]] : null;
+        labels.push(cls ? cls.name : '?');
+      }
+      return labels;
+    }
+
+    function summaryCard(label, pct, sub) {
+      const c = covColor(pct);
+      return `<div class="summary-card"><div class="summary-card-label">${label}</div><div class="summary-card-value" style="color:${c};">${pct.toFixed(1)}%</div><div class="summary-card-sub">${sub}</div><div class="cov-bar-wrap"><div class="cov-bar" style="width:${Math.min(pct,100)}%;background:${c};"></div></div></div>`;
+    }
+
+    // Level 0: Packages / Assemblies
+    function renderLevel0() {
+      const isVS = parsedData.format === 'Visual Studio';
+      const topLabel = isVS ? 'Assemblies' : 'Packages';
+      const brLabel = isVS ? 'Block %' : 'Branch %';
+
+      let items = parsedData.packages.map((p, idx) => ({
+        idx, name: p.name, lineRate: p.lineRate*100, branchRate: p.branchRate*100,
+        classes: p.classes.length, complexity: p.complexity||0,
+      }));
+      if (filterText) { const ft = filterText.toLowerCase(); items = items.filter(p => p.name.toLowerCase().includes(ft)); }
+      items.sort(sorter);
+      if (!items.length) return `<div class="empty-state">No ${topLabel.toLowerCase()} found</div>`;
+
+      let html = `<div class="section-title">${topLabel} (${items.length})</div><div style="overflow-x:auto;"><table class="cov-table"><thead><tr>`;
+      html += thSortable('name', isVS ? 'Assembly' : 'Package');
+      html += thSortable('lineRate', 'Line %');
+      html += thSortable('branchRate', brLabel);
+      html += thSortable('classes', 'Classes');
+      if (!isVS) html += thSortable('complexity', 'Complexity');
+      html += `</tr></thead><tbody>`;
+      items.forEach(p => {
+        html += `<tr class="nav-row" data-idx="${p.idx}" style="cursor:pointer;">`;
+        html += `<td class="name-cell">${escHtml(p.name)}</td><td>${inlineBar(p.lineRate)}</td><td>${inlineBar(p.branchRate)}</td><td>${p.classes}</td>`;
+        if (!isVS) html += `<td>${p.complexity || '—'}</td>`;
+        html += `</tr>`;
+      });
+      html += `</tbody></table></div>`;
+      return html;
+    }
+
+    // Level 1: Classes within a package/assembly
+    function renderLevel1() {
+      const pkg = parsedData.packages[currentPath[0]];
+      if (!pkg) return `<div class="error">Not found</div>`;
+      const isVS = parsedData.format === 'Visual Studio';
+      const brLabel = isVS ? 'Block %' : 'Branch %';
+
+      let items = pkg.classes.map((c, idx) => ({
+        idx, name: c.name, filename: c.filename || '',
+        lineRate: c.lineRate*100, branchRate: c.branchRate*100,
+        linesCovered: c.linesCovered||0, linesTotal: c.linesTotal||0,
+        methods: (c.methods||[]).length, complexity: c.complexity||0,
+      }));
+      if (filterText) { const ft = filterText.toLowerCase(); items = items.filter(c => c.name.toLowerCase().includes(ft) || c.filename.toLowerCase().includes(ft)); }
+      items.sort(sorter);
+      if (!items.length) return `<div class="empty-state">No classes found</div>`;
+
+      let html = `<div class="section-title">Classes in ${escHtml(pkg.name)} (${items.length})</div><div style="overflow-x:auto;"><table class="cov-table"><thead><tr>`;
+      html += thSortable('name', 'Class');
+      html += thSortable('lineRate', 'Line %');
+      html += thSortable('branchRate', brLabel);
+      html += thSortable('linesTotal', 'Lines');
+      html += thSortable('methods', 'Methods');
+      html += `</tr></thead><tbody>`;
+      items.forEach(c => {
+        html += `<tr class="nav-row" data-idx="${c.idx}" style="cursor:pointer;">`;
+        html += `<td class="name-cell" title="${escAttr(c.filename)}">${escHtml(c.name)}</td>`;
+        html += `<td>${inlineBar(c.lineRate)}</td><td>${inlineBar(c.branchRate)}</td><td>${c.linesCovered}/${c.linesTotal}</td><td>${c.methods}</td></tr>`;
+      });
+      html += `</tbody></table></div>`;
+      return html;
+    }
+
+    // Level 2: Class detail (methods + lines)
+    function renderLevel2() {
+      const pkg = parsedData.packages[currentPath[0]];
+      if (!pkg) return `<div class="error">Not found</div>`;
+      const cls = pkg.classes[currentPath[1]];
+      if (!cls) return `<div class="error">Not found</div>`;
+      const isVS = parsedData.format === 'Visual Studio';
+
+      let html = `<div class="summary-grid">`;
+      html += summaryCard('Line Coverage', cls.lineRate*100, `${cls.linesCovered||0} / ${cls.linesTotal||0} lines`);
+      html += summaryCard(isVS ? 'Block Coverage' : 'Branch Coverage', cls.branchRate*100, '');
+      if (cls.linesPartiallyCovered) html += summaryCard('Partially Covered', cls.linesTotal>0?(cls.linesPartiallyCovered/cls.linesTotal)*100:0, `${cls.linesPartiallyCovered} lines`);
+      if (cls.complexity) html += `<div class="summary-card"><div class="summary-card-label">Complexity</div><div class="summary-card-value" style="color:var(--text);">${cls.complexity}</div></div>`;
+      html += `</div>`;
+      if (cls.filename) html += `<div style="font-size:0.75rem;color:var(--text-dim);margin-bottom:16px;">File: ${escHtml(cls.filename)}</div>`;
+
+      // Methods
+      if (cls.methods && cls.methods.length) {
+        html += `<div class="part"><div class="part-header" data-toggle="methods-body"><span class="part-label">Methods (${cls.methods.length})</span><span class="part-toggle">▼</span></div>`;
+        html += `<div class="part-body" id="methods-body"><table class="cov-table"><thead><tr><th>Method</th><th>Line %</th><th>${isVS?'Block %':'Branch %'}</th><th>Lines</th>`;
+        if (isVS) html += `<th>Blocks</th>`;
+        html += `</tr></thead><tbody>`;
+        cls.methods.forEach(m => {
+          html += `<tr><td class="name-cell" title="${escAttr(m.signature)}">${escHtml(m.name)}</td>`;
+          html += `<td>${inlineBar(m.lineRate*100)}</td><td>${inlineBar(m.branchRate*100)}</td><td>${m.linesCovered||0}/${m.linesTotal||0}</td>`;
+          if (isVS) html += `<td>${m.blocksCovered||0}/${(m.blocksCovered||0)+(m.blocksNotCovered||0)}</td>`;
+          html += `</tr>`;
+        });
+        html += `</tbody></table></div></div>`;
+      }
+
+      // Lines
+      if (cls.lines && cls.lines.length) {
+        const uncov = cls.lines.filter(l => l.hits === 0 && !l.branch);
+        const partial = cls.lines.filter(l => l.branch);
+        html += `<div class="part"><div class="part-header" data-toggle="lines-body"><span class="part-label">Line Details (${cls.lines.length} lines)</span><span class="part-toggle">▼</span></div>`;
+        html += `<div class="part-body" id="lines-body">`;
+        if (uncov.length) {
+          html += `<div style="margin-bottom:12px;"><strong style="color:var(--red);font-size:0.75rem;text-transform:uppercase;">Uncovered Lines (${uncov.length})</strong><div style="margin-top:6px;font-size:0.8rem;">`;
+          html += rangeSpans(uncov.map(l=>l.number), 'var(--red)');
+          html += `</div></div>`;
+        }
+        if (partial.length) {
+          html += `<div style="margin-bottom:12px;"><strong style="color:var(--yellow);font-size:0.75rem;text-transform:uppercase;">Partially Covered Lines (${partial.length})</strong><div style="margin-top:6px;font-size:0.8rem;">`;
+          html += rangeSpans(partial.map(l=>l.number), 'var(--yellow)');
+          html += `</div></div>`;
+        }
+        html += `<div style="max-height:300px;overflow-y:auto;margin-top:8px;"><table class="cov-table"><thead><tr><th>Line</th><th>Status</th></tr></thead><tbody>`;
+        cls.lines.forEach(l => {
+          const [bg,tc,st] = l.branch ? ['rgba(251,191,36,0.06)','var(--yellow)','partial'] : l.hits>0 ? ['rgba(52,211,153,0.06)','var(--green)','covered'] : ['rgba(248,113,113,0.06)','var(--red)','not covered'];
+          html += `<tr style="background:${bg};"><td>${l.number}</td><td style="color:${tc};">${st}</td></tr>`;
+        });
+        html += `</tbody></table></div></div></div>`;
+      }
+      return html;
+    }
+
+    // ─── Helpers ───
+    function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    function escAttr(s) { return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/'/g,'&#39;'); }
+    function covColor(p) { return p >= thresholdHigh ? 'var(--green)' : p >= thresholdLow ? 'var(--yellow)' : 'var(--red)'; }
+    function inlineBar(p) { const c = covColor(p); return `<div class="inline-bar"><div class="inline-bar-pct" style="color:${c};">${p.toFixed(1)}%</div><div class="inline-bar-track"><div class="inline-bar-fill" style="width:${Math.min(p,100)}%;background:${c};"></div></div></div>`; }
+    function thSortable(col, label) { const a = sortCol===col?(sortAsc?'▲':'▼'):''; return `<th data-sort="${col}">${escHtml(label)}<span class="sort-arrow">${a}</span></th>`; }
+
+    function sorter(a, b) {
+      let va = a[sortCol], vb = b[sortCol];
+      if (va === undefined) va = a.name;
+      if (vb === undefined) vb = b.name;
+      if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb||'').toLowerCase(); }
+      return va < vb ? (sortAsc?-1:1) : va > vb ? (sortAsc?1:-1) : 0;
+    }
+
+    function groupIntoRanges(nums) {
+      if (!nums.length) return [];
+      nums.sort((a,b)=>a-b);
+      const r = [[nums[0],nums[0]]];
+      for (let i = 1; i < nums.length; i++) {
+        if (nums[i]===r[r.length-1][1]+1) r[r.length-1][1]=nums[i]; else r.push([nums[i],nums[i]]);
+      }
+      return r;
+    }
+
+    function rangeSpans(nums, color) {
+      return groupIntoRanges(nums).map(r => r[0]===r[1] ? `<span style="color:${color};">${r[0]}</span>` : `<span style="color:${color};">${r[0]}–${r[1]}</span>`).join(', ');
+    }
+
+    // ─── Events ───
+    function bindEvents() {
+      output.querySelectorAll('th[data-sort]').forEach(th => {
+        th.addEventListener('click', () => {
+          const col = th.dataset.sort;
+          if (sortCol===col) sortAsc=!sortAsc; else { sortCol=col; sortAsc=true; }
+          render();
+        });
+      });
+
+      // Drill-down rows: push index onto currentPath
+      output.querySelectorAll('.nav-row').forEach(row => {
+        row.addEventListener('click', () => {
+          const idx = parseInt(row.dataset.idx);
+          currentPath = [...currentPath, idx];
+          sortCol = 'name'; sortAsc = true; filterText = '';
+          render();
+        });
+      });
+
+      // Breadcrumb
+      output.querySelectorAll('.breadcrumb-item[data-nav]').forEach(el => {
+        el.addEventListener('click', () => {
+          const n = parseInt(el.dataset.nav);
+          currentPath = n < 0 ? [] : currentPath.slice(0, n + 1);
+          sortCol = 'name'; sortAsc = true; render();
+        });
+      });
+
+      const fi = document.getElementById('filterInput');
+      if (fi) fi.addEventListener('input', e => {
+        filterText = e.target.value; render();
+        const nf = document.getElementById('filterInput');
+        if (nf) { nf.focus(); nf.selectionStart = nf.selectionEnd = nf.value.length; }
+      });
+
+      const thH = document.getElementById('threshHigh');
+      const thL = document.getElementById('threshLow');
+      if (thH) thH.addEventListener('change', e => { thresholdHigh = parseInt(e.target.value)||80; render(); });
+      if (thL) thL.addEventListener('change', e => { thresholdLow = parseInt(e.target.value)||50; render(); });
+
+      output.querySelectorAll('.part-header[data-toggle]').forEach(hdr => {
+        hdr.addEventListener('click', () => {
+          const body = document.getElementById(hdr.dataset.toggle);
+          if (body) { body.classList.toggle('collapsed'); const t = hdr.querySelector('.part-toggle'); if (t) t.textContent = body.classList.contains('collapsed')?'▶':'▼'; }
+        });
+      });
+    }
+  </script>
+</body>
+</html>
